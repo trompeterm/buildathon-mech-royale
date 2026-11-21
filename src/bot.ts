@@ -67,7 +67,7 @@ const K = {
   rear: (process.env.K_REAR ?? "0") === "1",
   finish: (process.env.K_FINISH ?? "1") === "1",
   finish2: (process.env.K_FINISH2 ?? "0") === "1",
-  capCubes: (process.env.K_CAPCUBES ?? "1") === "1",
+  capCubes: (process.env.K_CAPCUBES ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
