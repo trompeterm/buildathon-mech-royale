@@ -72,6 +72,7 @@ const K = {
   capCubes: (process.env.K_CAPCUBES ?? "0") === "1",
   brawl: (process.env.K_BRAWL ?? "0") === "1",
   jink: (process.env.K_JINK ?? "1") === "1",
+  press: (process.env.K_PRESS ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -918,6 +919,12 @@ class Brain {
     else radial = 0
     if (!tg.los && d < 250) radial = 0.4 // close in to regain sight? mild
     if (K.focus && tg.hp < 350 && me.hp > tg.hp * 1.5 && d > 25) radial = 1 // finish it before it regenerates
+    // a hurt target backing off (to break sight and regenerate): stay on it
+    let pressing = false
+    if (K.press && tg.los && tg.hp < tg.maxHp * 0.4 && me.hp > me.max_hp * 0.45 && d > 30 && !tg.weapons.includes("lightning")) {
+      const away = (tg.vel[0] * ux + tg.vel[1] * uy)
+      if (away > 3) { radial = 1; pressing = true }
+    }
     // lightning shorts lasers and out-damages everything inside 45 m: close the gap fast, weaving a little
     const rush = K.brawl && has("lightning") && d > 50 && d < 260 && tg.los
     let mx = rush ? -uy * this.strafe * 0.4 + ux : -uy * this.strafe + ux * radial * 0.8
@@ -958,7 +965,7 @@ class Brain {
     }
     act.move = [mx, my]
     const charging = (this.weapon(o, "laser")?.charge ?? 0) > 0
-    act.boost = (me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) || (o.t < this.jinkUntil && me.energy > 12)) && !charging
+    act.boost = (me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) || (o.t < this.jinkUntil && me.energy > 12) || (pressing && me.energy > 20)) && !charging
   }
 
   cubeMem = new Map<number, { id: number; pos: V3; t: number }>()
