@@ -53,12 +53,12 @@ const K = {
 }
 
 const UPGRADE_PREF = [
-  "armor", "plating", "nanites", "laser_damage", "laser_charge", "gun_damage", "gun_rate", "lightning_efficiency",
-  "gun_mag", "sensors", "servos", "capacitor", "reactor", "jets", "lightning_range", "gun_velocity", "gyros",
-  "lightning_chain", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
+  "gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating",
+  "gun_velocity", "nanites", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
+  "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
-const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: 2, mortar: 0, gun: 0 } // mortar: enemy lasers cook it off (+60% damage to us)
+const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: 2, mortar: 0.5, gun: 0 }
 
 type Goal = { x: number; y: number; z?: number; why: string; id?: number }
 
