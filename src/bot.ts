@@ -46,7 +46,7 @@ const K = {
   laserBand: (process.env.K_LASERBAND ?? "0") === "1",
   calmBoost: (process.env.K_CALMBOOST ?? "0") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
-  aggro: (process.env.K_AGGRO ?? "0") === "1",
+  aggro: (process.env.K_AGGRO ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
