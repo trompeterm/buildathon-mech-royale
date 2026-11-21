@@ -1,3 +1,5 @@
 mechfight-kit.tar.gz
 __pycache__/
 *.pyc
+node_modules/
+bun.lock*

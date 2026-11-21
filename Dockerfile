@@ -1,6 +1,6 @@
-# Build from this folder: docker build -t my-bot .
 # The match runs it with no network, a read-only root (writable /tmp), 1 CPU, 512 MB, and the map at /arena.
-FROM python:3.13.18-slim
+FROM oven/bun:1.4.4-slim
 WORKDIR /bot
-COPY . .
-ENTRYPOINT ["python3", "-u", "/bot/example_bot.py"]
+COPY package.json ./
+COPY src ./src
+ENTRYPOINT ["bun", "/bot/src/bot.ts"]

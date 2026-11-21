@@ -1,0 +1,6 @@
+const t0 = performance.now()
+const { World } = await import("../src/world.ts")
+const t1 = performance.now()
+const w = new World(process.argv[2] ?? "kit/arena")
+const t2 = performance.now()
+console.error("import", (t1 - t0).toFixed(0), "world", (t2 - t1).toFixed(0))
