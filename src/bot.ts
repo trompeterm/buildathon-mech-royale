@@ -63,8 +63,9 @@ const K = {
   drops: (process.env.K_DROPS ?? "1") === "1",
   crateMem: (process.env.K_CRATEMEM ?? "1") === "1",
   sustain: (process.env.K_SUSTAIN ?? "1") === "1",
-  stealth: (process.env.K_STEALTH ?? "1") === "1",
-  rear: (process.env.K_REAR ?? "1") === "1",
+  stealth: (process.env.K_STEALTH ?? "0") === "1",
+  rear: (process.env.K_REAR ?? "0") === "1",
+  finish: (process.env.K_FINISH ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -134,6 +135,7 @@ class Brain {
   lastTargetT = -99
   quiet = false
   fightLooting = false
+  chasing = false
   climbWaitT = -99
   noClimbUntil = -99
   lastStuckT = -99
@@ -617,7 +619,7 @@ class Brain {
       this.combatMove(o, target, act)
       lap('cmove', _t0)
       moveSet = true
-      label = (this.fightLooting ? "floot " : "fight ") + target.id
+      label = (this.fightLooting ? "floot " : this.chasing ? "chase " : "fight ") + target.id
     }
 
     const canHunt = K.hunt && hpFrac > 0.75 && !needRotate && o.t - this.lastDamagedT > 3
@@ -874,6 +876,17 @@ class Brain {
       }
     }
     this.fightLooting = false
+    this.chasing = false
+    // a hurt enemy broke line of sight to regenerate (45 HP/s after 5 s): we still track it, go finish it
+    if (K.finish && !tg.los && o.t - tg.seen < 4.5 && tg.hp < tg.maxHp * 0.45 && me.hp > me.max_hp * 0.5 && d2(tg.pos, pos) < 220) {
+      const zc = this.zoneAt(o, o.t + 10)
+      if (Math.hypot(tg.pos[0] - zc.c[0], tg.pos[1] - zc.c[1]) < zc.r - 5) {
+        this.goTo(o, { x: tg.pos[0], y: tg.pos[1], z: tg.pos[2], why: "chase" }, act)
+        act.boost = me.energy > 30
+        this.chasing = true
+        return
+      }
+    }
     const d = d2(tg.pos, pos)
     const has = (k: string) => !!this.weapon(o, k)
     // preferred distance band
