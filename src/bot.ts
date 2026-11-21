@@ -55,6 +55,7 @@ const K = {
   farm: (process.env.K_FARM ?? "1") === "1",
   farm2: (process.env.K_FARM2 ?? "1") === "1",
   scan: (process.env.K_SCAN ?? "0") === "1",
+  farm3: (process.env.K_FARM3 ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -586,7 +587,7 @@ class Brain {
     if (!moveSet) {
       // loot / drops / npcs / roam
       _t0 = performance.now()
-      const lg = this.lootGoal(o, enemies.length > 0)
+      const lg = this.lootGoal(o, K.farm3 ? enemies.some((e) => d3(e.pos, pos) < 140) || o.t - this.lastDamagedT < 4 : enemies.length > 0)
       lap('loot', _t0)
       if (lg) {
         this.goTo(o, lg, act)
