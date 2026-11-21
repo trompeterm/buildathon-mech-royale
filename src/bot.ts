@@ -73,6 +73,9 @@ const K = {
   brawl: (process.env.K_BRAWL ?? "0") === "1",
   jink: (process.env.K_JINK ?? "1") === "1",
   press: (process.env.K_PRESS ?? "0") === "1",
+  isolate: (process.env.K_ISOLATE ?? "1") === "1",
+  iso2: (process.env.K_ISO2 ?? "0") === "1",
+  hull: (process.env.K_HULL ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -82,7 +85,7 @@ const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (
 
 const LATE_PREF = ["plating", "nanites", "armor"]
 
-const UPGRADE_PREF = (process.env.K_UPG3 ?? "1") === "1" ? [
+const UPGRADE_PREF = (process.env.K_UPG3 ?? "0") === "1" ? [
   // by effective fighting strength per pick: +15% HP is worth ~+15% damage in a duel and counts against every enemy
   "plating", "laser_damage", "armor", "nanites", "gun_damage", "gun_rate", "laser_charge", "gun_velocity", "gun_mag",
   "lightning_efficiency", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
@@ -149,6 +152,10 @@ class Brain {
   fightLooting = false
   chasing = false
   jinkUntil = -9
+  isolating = false
+  isoFightT = -9
+  isoCache: { g: Goal | null; t: number; tid: number; hullHere: boolean } | null = null
+  hulled = false
   climbWaitT = -99
   noClimbUntil = -99
   lastStuckT = -99
@@ -512,7 +519,12 @@ class Brain {
     if (nLos >= 2) {
       let weakest = Infinity
       for (const e of losEnemies) weakest = Math.min(weakest, e.hp)
-      if (!(weakest < 350 && hpFrac > 0.5) && !(K.aggro && hpFrac > 0.6)) flee = true
+      if (!(weakest < 350 && hpFrac > 0.5) && !(K.aggro && hpFrac > 0.6)) {
+        // outnumbered: if a nearby spot turns it into a 1v1, fight from there instead of hiding
+        const lz = !!this.weapon(o, "laser")
+        if (K.isolate && K.iso2 && !flee && target && hpFrac > 0.35 && (this.isolateSpot(o, target, lz ? 60 : 35, lz ? 160 : 110), this.isoCache?.g)) this.isoFightT = o.t
+        else flee = true
+      }
     }
     // gun-only: don't start long-range trades; break line of sight and keep looting
     if (K.gunAvoid && !me.weapons[1] && target && d3(target.pos, pos) > 100 && o.t - this.lastDamagedT > 1.5 && target.hp > 500) flee = true
@@ -633,7 +645,7 @@ class Brain {
       this.combatMove(o, target, act)
       lap('cmove', _t0)
       moveSet = true
-      label = (this.fightLooting ? "floot " : this.chasing ? "chase " : "fight ") + target.id
+      label = (this.fightLooting ? "floot " : this.chasing ? "chase " : this.hulled ? "hull " : this.isolating ? (this.isoCache?.g?.why === "hull" ? "tohull " : "iso ") : "fight ") + target.id
     }
 
     const canHunt = K.hunt && hpFrac > 0.75 && !needRotate && o.t - this.lastDamagedT > 3
@@ -912,6 +924,25 @@ class Brain {
     if (has("lightning")) { lo = 15; hi = 38 }
     if (tg.weapons.includes("lightning") && !has("lightning")) lo = Math.max(lo, 60)
     if (tg.weapons.includes("mortar") && !has("lightning")) lo = Math.max(lo, 40)
+    // other hunters can see us too: shift to a nearby spot that still sees the target but hides us from them
+    this.isolating = false
+    this.hulled = false
+    if (K.isolate) {
+      const g = this.isolateSpot(o, tg, lo, hi)
+      if (g) {
+        this.goTo(o, g, act)
+        act.boost = me.energy > 30 && !((this.weapon(o, "laser")?.charge ?? 0) > 0)
+        this.isolating = true
+        return
+      }
+      // on a hull-down spot: hold still and keep shooting over the lip
+      if (this.isoCache?.hullHere && this.isoCache.tid === tg.id) {
+        act.move = [0, 0]
+        act.boost = false
+        this.hulled = true
+        return
+      }
+    }
     if (o.t > this.strafeUntil) {
       if (DODGE === 1) { this.strafe = -this.strafe || 1; this.strafeUntil = o.t + 0.25 + this.rnd() * 0.3 }
       else if (DODGE === 2) { this.strafe = -this.strafe || 1; this.strafeUntil = o.t + 0.5 + this.rnd() * 0.4 }
@@ -971,6 +1002,76 @@ class Brain {
     act.move = [mx, my]
     const charging = (this.weapon(o, "laser")?.charge ?? 0) > 0
     act.boost = (me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) || (o.t < this.jinkUntil && me.energy > 12) || (pressing && me.energy > 20)) && !charging
+  }
+
+  /** a fight spot within ~22 m: keeps a clean shot at the target, ideally hull-down against it (house bots aim at
+   *  our center, 4.5 m up, from their 7 m muzzle: a 4.5-7 m lip in front of us eats their shots while ours clear it),
+   *  and seen by as few of the other known enemies as possible */
+  isolateSpot(o: Observation, tg: Track, lo: number, hi: number): Goal | null {
+    const me = o.self, pos = me.pos, W = this.W
+    const c = this.isoCache
+    if (c && c.tid === tg.id && o.t - c.t < 0.4) {
+      if (!c.g) return null
+      const dd = Math.hypot(c.g.x - pos[0], c.g.y - pos[1])
+      if (dd < (c.g.why === "hull" ? 1.0 : 3)) return null
+      return c.g
+    }
+    const others = [...this.tracks.values()].filter((e) => e.id !== me.id && e.id !== tg.id && o.t - e.seen < 6 && d3(e.pos, pos) < 260)
+      .sort((a, b) => d3(a.pos, pos) - d3(b.pos, pos)).slice(0, 4)
+    let g: Goal | null = null
+    let hullHere = false
+    const hullOn = K.hull && !tg.weapons.includes("mortar") && !tg.weapons.includes("lightning")
+    if ((others.length || hullOn) && tg.los) {
+      const sc = 1 + 0.05 * me.cubes
+      const tsc = 1 + 0.05 * tg.cubes
+      const tgP: V3 = [tg.pos[0], tg.pos[1], tg.pos[2] + 4.5 * tsc]
+      const tgM: V3 = [tg.pos[0], tg.pos[1], tg.pos[2] + 7 * tsc]
+      const thr: V3[] = others.map((e) => [e.pos[0], e.pos[1], e.pos[2] + 8 * (1 + 0.05 * e.cubes)])
+      const expo = (x: number, y: number, h: number) => {
+        let n = 0
+        for (const t of thr) if (W.los(t, [x, y, h + 4.5 * sc], 0.5, 2) || W.los(t, [x, y, h + 8.5 * sc], 0.5, 2)) n++
+        return n
+      }
+      const dx0 = tg.pos[0] - pos[0], dy0 = tg.pos[1] - pos[1], L0 = Math.hypot(dx0, dy0) || 1
+      const px = -dy0 / L0, py = dx0 / L0
+      const hullAt = (x: number, y: number, h: number) => {
+        if (!hullOn) return false
+        for (const off of [0, -1.2, 1.2]) {
+          const xx = x + px * off, yy = y + py * off
+          if (W.los(tgM, [xx, yy, h + 4.5 * sc], 0.3, 1)) return false
+        }
+        return true
+      }
+      const shootOk = (x: number, y: number, h: number) => W.los([x, y, h + 7 * sc], tgP, 0.5, 1)
+      const value = (x: number, y: number, h: number) => (hullAt(x, y, h) ? 150 : 0) - expo(x, y, h) * 100
+      const curOk = shootOk(pos[0], pos[1], pos[2])
+      hullHere = curOk && hullAt(pos[0], pos[1], pos[2])
+      const curV = curOk ? (hullHere ? 150 : 0) - expo(pos[0], pos[1], pos[2]) * 100 : -1e9
+      if (curV < 150) {
+        const zc = this.zoneAt(o, o.t + 8)
+        let bs = curV + 20
+        outer: for (const r of [4, 8, 13, 18, 22]) {
+          for (let k = 0; k < 12; k++) {
+            if (this.elapsed() > 22) break outer
+            const a = (k * PI) / 6 + r * 0.05
+            const x = pos[0] + Math.cos(a) * r, y = pos[1] + Math.sin(a) * r
+            if (!W.inBounds(x, y)) continue
+            const n = W.node(x, y)
+            if (W.gBlocked[n]) continue
+            const h = W.gH[n]
+            if (Math.abs(h - pos[2]) > 3) continue
+            if (Math.hypot(x - zc.c[0], y - zc.c[1]) > zc.r - 5) continue
+            const dt = Math.hypot(x - tg.pos[0], y - tg.pos[1])
+            if (dt < Math.max(20, lo - 25) || dt > hi + 50) continue
+            if (!shootOk(x, y, h)) continue
+            const v = value(x, y, h) - r * 1.5
+            if (v > bs) { bs = v; g = { x, y, z: h, why: v + r * 1.5 >= 150 ? "hull" : "iso" } }
+          }
+        }
+      }
+    }
+    this.isoCache = { g, t: o.t, tid: tg.id, hullHere }
+    return g
   }
 
   cubeMem = new Map<number, { id: number; pos: V3; t: number }>()
