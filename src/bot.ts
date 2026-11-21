@@ -61,6 +61,7 @@ const K = {
   loot2: (process.env.K_LOOT2 ?? "1") === "1",
   loot3: (process.env.K_LOOT3 ?? "0") === "1",
   drops: (process.env.K_DROPS ?? "1") === "1",
+  crateMem: (process.env.K_CRATEMEM ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -626,6 +627,7 @@ class Brain {
       if (lg) {
         this.goTo(o, lg, act)
         label = lg.why
+        if (lg.why === "crate") lookYaw = Math.atan2(lg.y - pos[1], lg.x - pos[0])
         moveSet = true
         if (needRotate || (lg.why === "drop" && me.energy > 50)) act.boost = true
         // travel fast while calm: energy is otherwise idle (keep a reserve for climbing / fights)
@@ -893,6 +895,7 @@ class Brain {
 
   cubeMem = new Map<number, { id: number; pos: V3; t: number }>()
   pickMem = new Map<number, { id: number; kind: string; pos: V3; t: number }>()
+  crateMem = new Map<number, { id: number; pos: V3; t: number }>()
   /** remember loot we saw (it is only listed while visible); forget what should be visible but isn't */
   updateLootMem(o: Observation) {
     const me = o.self
@@ -900,6 +903,7 @@ class Brain {
     const near = (this.C.vision.near_range ?? 45) + (me.stats.near_range_bonus ?? 0) - 3
     for (const c of o.cubes) this.cubeMem.set(c.id, { id: c.id, pos: c.pos, t: o.t })
     for (const p of o.pickups) this.pickMem.set(p.id, { id: p.id, kind: p.kind, pos: p.pos, t: o.t })
+    if (K.crateMem) for (const c of o.crates) this.crateMem.set(c.id, { id: c.id, pos: c.pos, t: o.t })
     const prune = (m: Map<number, any>) => {
       for (const [id, c] of m) {
         if (c.t === o.t) continue
@@ -910,6 +914,12 @@ class Brain {
     }
     prune(this.cubeMem)
     prune(this.pickMem)
+    // crates never move: keep them long, drop them once we should see them and don't (destroyed)
+    for (const [id, c] of this.crateMem) {
+      if (c.t === o.t) continue
+      if (o.t - c.t > 200) { this.crateMem.delete(id); continue }
+      if (d2(c.pos, me.pos) < near && (this.W.los(eye, [c.pos[0], c.pos[1], c.pos[2] + 1.2], 0.5) || this.W.los(eye, [c.pos[0], c.pos[1], c.pos[2] + 2.3], 0.5))) this.crateMem.delete(id)
+    }
   }
 
   /** in a fight: a cube or better weapon close enough to walk to while we keep shooting */
@@ -982,7 +992,8 @@ class Brain {
       cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (farm ? 200 : K.loot3 ? 150 : 70) - dist })
     }
     // crates: approach to shooting range if not visible line
-    for (const c of o.crates) {
+    for (const c of (K.crateMem ? this.crateMem.values() : o.crates)) {
+      if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
       if (dist > (farm ? 220 : 160)) continue
@@ -1019,7 +1030,8 @@ class Brain {
       const d = d3([g.x, g.y, g.z ?? 0], pos)
       const eye: V3 = [pos[0], pos[1], pos[2] + 8]
       const tz = (g.z ?? 0) + 1.2
-      if (d < (g.why === "npc" ? 70 : 90) && this.W.los(eye, [g.x, g.y, tz])) {
+      const seen = g.why === "npc" || o.crates.some((c) => c.id === g.id)
+      if (d < (g.why === "npc" ? 70 : 90) && this.W.los(eye, [g.x, g.y, tz]) && seen) {
         // hold position (strafe a little vs npcs)
         return { x: pos[0], y: pos[1], why: g.why + "-shoot" }
       }
