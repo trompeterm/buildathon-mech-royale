@@ -39,6 +39,36 @@ class Match {
   crates: { id: number; pos: V3; hp: number }[] = []
   cubes: { id: number; pos: V3 }[] = []
   pickups: { id: number; kind: string; pos: V3 }[] = []
+  drops: { id: number; pos: V3; landT: number; progress: number; holder: number | null; taken: boolean }[] = []
+  dropsCalled = 0
+  stepDrops() {
+    const D = CFG.drops
+    if (process.env.SIM_NODROPS) return
+    while (this.dropsCalled < D.times.length && this.t >= D.times[this.dropsCalled]) {
+      this.drops.push({ id: 20000 + this.dropsCalled, pos: this.randPoint(this.znr * D.spread, this.zn), landT: this.t + D.fall_s, progress: 0, holder: null, taken: false })
+      this.dropsCalled++
+    }
+    for (const d of this.drops) {
+      if (d.taken || this.t < d.landT) continue
+      const inside = this.mechs.filter((m) => m.alive && Math.hypot(m.pos[0] - d.pos[0], m.pos[1] - d.pos[1]) < D.radius)
+      if (inside.length === 0) { d.holder = null; d.progress = 0; continue }
+      if (inside.length > 1) continue
+      const m = inside[0]
+      if (d.holder !== m.id) { d.holder = m.id; d.progress = 0 }
+      d.progress += DT
+      if (d.progress >= D.capture_s) {
+        d.taken = true
+        for (let i = 0; i < D.cubes; i++) {
+          const before = m.cubes
+          m.cubes++
+          if (m.cubes <= CFG.cubes.stat_cap) { const add = CFG.mech.hp * CFG.cubes.hp_per_cube; m.maxHp += add; m.hp += add }
+          if (CFG.cubes.upgrade_thresholds.some((th: number) => th > before && th <= m.cubes)) this.makeOffer(m)
+        }
+        m.hp = m.maxHp; m.energy = m.stats.energy
+        m.events.push({ type: "drop", id: d.id, cubes: m.cubes })
+      }
+    }
+  }
   nextId = 30000
   t = 0
   tick = 0
@@ -222,7 +252,7 @@ class Match {
       pickups: items(this.pickups, 0.5).map((c) => ({ id: c.id, kind: c.kind, pos: [...c.pos] })),
       sounds: m.sounds, beams: m.beams, events: m.events,
       zone: { center: [...this.zc], radius: this.zr, next_center: [...this.zn], next_radius: this.znr, shrink_start: this.zs, shrink_end: this.ze, dps: this.zdps },
-      offer: m.offer, drops: [],
+      offer: m.offer, drops: this.drops.filter((d) => !d.taken).map((d) => ({ id: d.id, pos: [...d.pos], radius: CFG.drops.radius, lands_in: +Math.max(0, d.landT - this.t).toFixed(2), capture_s: CFG.drops.capture_s, progress: +d.progress.toFixed(2), holder: d.holder })),
     }
     m.sounds = []; m.beams = []; m.events = []
     return o
@@ -652,6 +682,7 @@ class Match {
         for (const m of this.mechs) if (m.alive) this.stepMech(m)
         this.stepProjs()
         this.stepNpcs()
+        this.stepDrops()
         this.t += DT
         this.tick++
         if (this.t >= this.ze && this.phase < CFG.zone.phases.length) this.nextPhase()

@@ -59,7 +59,8 @@ const K = {
   endgame: (process.env.K_ENDGAME ?? "1") === "1",
   fightLoot: (process.env.K_FIGHTLOOT ?? "1") === "1",
   loot2: (process.env.K_LOOT2 ?? "1") === "1",
-  loot3: (process.env.K_LOOT3 ?? "1") === "1",
+  loot3: (process.env.K_LOOT3 ?? "0") === "1",
+  drops: (process.env.K_DROPS ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -917,6 +918,20 @@ class Brain {
     const zc = this.zoneAt(o, o.t + 10)
     const ok = (p: number[]) => Math.hypot(p[0] - zc.c[0], p[1] - zc.c[1]) < zc.r - 5 && Math.abs(p[2] - me.pos[2]) < 6
     let best: Goal | null = null, bd = Infinity
+    if (K.drops) {
+      for (const dr of o.drops) {
+        if ((this.dropFail.get(dr.id) ?? -1) > o.t) continue
+        if (dr.holder !== null && dr.holder !== me.id && dr.progress > 1) continue
+        const d = d2(dr.pos, pos)
+        if (d > 150 || dr.lands_in > d / 15 + 3) continue
+        if (Math.hypot(dr.pos[0] - zc.c[0], dr.pos[1] - zc.c[1]) > zc.r - 5) continue
+        let crowd = false
+        for (const e of this.tracks.values()) if (e.id !== me.id && o.t - e.seen < 3 && d2(e.pos, dr.pos) < 25) crowd = true
+        if (crowd) continue
+        // 3 cubes + full HP + full energy: worth far more than a loose cube
+        if (d - 100 < bd) { bd = d - 100; best = { x: dr.pos[0], y: dr.pos[1], z: dr.pos[2], why: "fdrop", id: dr.id } }
+      }
+    }
     for (const c of this.cubeMem.values()) {
       if ((this.badTargets.get(c.id) ?? -1) > o.t || !ok(c.pos)) continue
       const d = d2(c.pos, pos)
@@ -987,7 +1002,7 @@ class Brain {
     for (const dr of o.drops) {
       if ((this.dropFail.get(dr.id) ?? -1) > o.t) continue
       const dist = d2(dr.pos, pos)
-      if (dist > 220) continue
+      if (dist > (K.drops ? 450 : 220)) continue
       if (dr.holder !== null && dr.holder !== me.id && dr.progress > 1) continue
       let others = 0
       for (const e of this.tracks.values()) if (o.t - e.seen < 3 && d2(e.pos, dr.pos) < 60) others++
