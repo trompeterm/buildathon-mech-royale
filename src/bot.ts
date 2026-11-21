@@ -51,7 +51,8 @@ const K = {
   hunt: (process.env.K_HUNT ?? "0") === "1",
   duck: (process.env.K_DUCK ?? "0") === "1",
   gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
-  focus: (process.env.K_FOCUS ?? "1") === "1",
+  focus: (process.env.K_FOCUS ?? "0") === "1",
+  farm: (process.env.K_FARM ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -840,6 +841,7 @@ class Brain {
   }
 
   lootGoal(o: Observation, enemiesSeen: boolean): Goal | null {
+    const farm = K.farm && o.t < 120
     const me = o.self
     const pos = me.pos
     const z = this.safeCircle(o)
@@ -867,23 +869,23 @@ class Brain {
       if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
-      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: 70 - dist })
+      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (farm ? 200 : 70) - dist })
     }
     // crates: approach to shooting range if not visible line
     for (const c of o.crates) {
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
-      if (dist > 160) continue
-      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "crate", id: c.id }, score: 35 - dist })
+      if (dist > (farm ? 220 : 160)) continue
+      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "crate", id: c.id }, score: farm ? 90 - dist * 0.6 : 35 - dist })
     }
     // NPC drones for cubes (if healthy)
-    if (me.hp / me.max_hp > 0.55 && !enemiesSeen) {
+    if (me.hp / me.max_hp > (farm ? 0.45 : 0.55) && !enemiesSeen) {
       for (const n of this.npcs.values()) {
         if (o.t - n.seen > 4) continue
         if (!okPlace(n.pos)) continue
         const dist = d3(n.pos, pos)
-        if (dist > 180) continue
-        cands.push({ g: { x: n.pos[0], y: n.pos[1], z: n.pos[2], why: "npc", id: n.id }, score: 45 - dist })
+        if (dist > (farm ? 260 : 180)) continue
+        cands.push({ g: { x: n.pos[0], y: n.pos[1], z: n.pos[2], why: "npc", id: n.id }, score: farm ? 170 - dist * 0.6 : 45 - dist })
       }
     }
     // supply drops
