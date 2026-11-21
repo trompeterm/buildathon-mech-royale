@@ -49,7 +49,7 @@ const K = {
   aggro: (process.env.K_AGGRO ?? "1") === "1",
   aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
   hunt: (process.env.K_HUNT ?? "0") === "1",
-  duck: (process.env.K_DUCK ?? "1") === "1",
+  duck: (process.env.K_DUCK ?? "0") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -58,7 +58,7 @@ const UPGRADE_PREF = [
   "lightning_chain", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
-const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: 2, mortar: 0.5, gun: 0 }
+const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: 2, mortar: 0, gun: 0 } // mortar: enemy lasers cook it off (+60% damage to us)
 
 type Goal = { x: number; y: number; z?: number; why: string; id?: number }
 
