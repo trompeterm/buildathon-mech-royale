@@ -47,6 +47,7 @@ class Match {
   hunters = 1
   verbose: boolean
   timing: number[] = []
+  hist: Record<string, number> = {}
   log: string[] = []
 
   constructor(seed: number, nBots: number, verbose: boolean) {
@@ -636,6 +637,8 @@ class Match {
           const t0 = performance.now()
           try { a = m.ctrl.act(o) } catch (e) { console.error("act error", e); a = {} }
           this.timing.push(performance.now() - t0)
+          const lab = (m.ctrl.dbg as string).split(' ')[0]
+          this.hist[lab] = (this.hist[lab] ?? 0) + 1
         } else { a = this.houseAct(m); m.events = []; m.sounds = []; m.beams = [] }
         m.cmd = { ...m.cmd, ...a, fire: a.fire ?? [false, false], jump: !!a.jump, take: a.take, drop: a.drop, reload: !!a.reload, boost: !!a.boost, move: a.move ?? [0, 0] }
         if (a.aim) m.cmdAim = [a.aim[0], Math.max(CFG.mech.min_pitch, Math.min(CFG.mech.max_pitch, a.aim[1]))]
@@ -704,6 +707,7 @@ for (let i = 0; i < N; i++) {
     console.log(`match ${seed0 + i} bot${b}: place ${me.place} pts ${pts} kills ${me.kills} died ${me.alive ? "-" : me.deathT.toFixed(0) + "s by " + me.cause} cubes ${me.cubes} w=${me.weapons.map((w) => w?.kind)} hp=${me.hp.toFixed(0)} shots ${me.shots ?? 0} hits ${me.hits ?? 0} dealt ${(me.dealt ?? 0).toFixed(0)} | killer: ${(() => { const k = res.find((x) => me.cause.includes(':' + x.id + '/')); return k ? `shots ${k.shots} hits ${k.hits} hp ${k.hp.toFixed(0)}` : '' })()}`)
   }
   times.push(...m.timing)
+  if (args.includes('--hist')) console.log('   ', Object.entries(m.hist).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${(v / 10).toFixed(0)}s`).join(' '))
 }
 times.sort((a, b) => a - b)
 console.log(Object.entries(PROF).map(([k, v]) => `${k}=${(v / times.length).toFixed(2)}`).join(' '))
