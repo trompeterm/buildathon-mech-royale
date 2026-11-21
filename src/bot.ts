@@ -44,12 +44,13 @@ type Track = {
 const K = {
   evadeFight: (process.env.K_EVADEFIGHT ?? "0") === "1",
   laserBand: (process.env.K_LASERBAND ?? "0") === "1",
-  calmBoost: (process.env.K_CALMBOOST ?? "0") === "1",
+  calmBoost: (process.env.K_CALMBOOST ?? "1") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
   aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
   hunt: (process.env.K_HUNT ?? "0") === "1",
   duck: (process.env.K_DUCK ?? "0") === "1",
+  gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -1044,7 +1045,12 @@ class Brain {
       const laserCharging = lz >= 0 && (ws[lz]!.charge ?? 0) > 0
       if (laserCharging || (lz >= 0 && tlos && (ws[lz]!.cooldown ?? 0) <= 0.05 && dist < 260)) {
         const l2 = this.leadAim(o, tpos, tvel, 1e6, hOff)
-        if (laserCharging) desired = [l2.yaw, l2.pitch]
+        if (laserCharging) {
+          // keep the gun leading (and firing) through the charge; snap to the beam aim at the end
+          const full = ws[lz]!.stats.charge ?? 0.75
+          const gunBusy = gun < 0 || (ws[gun]!.reload ?? 0) > 0 || (ws[gun]!.ammo ?? 1) === 0 || !tlos
+          if (!K.gunCharge || gunBusy || (ws[lz]!.charge ?? 0) >= full - 0.12) desired = [l2.yaw, l2.pitch]
+        }
       }
       const angErr = (y: number, p: number) => Math.hypot(wrap(aimNow[0] - y) * Math.cos(p), aimNow[1] - p)
       const tolFor = (rr: number, dd: number) => Math.max(0.006, Math.atan2(rr * 1.5, Math.max(1, dd)))
