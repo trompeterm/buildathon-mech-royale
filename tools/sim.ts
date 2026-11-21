@@ -308,6 +308,18 @@ class Match {
         fightMove = [-uy * st.strafe * 1 + ux * rad, ux * st.strafe * 1 + uy * rad]
       }
       if (!fightMove && !(m as any).noChase) goal = [tgt.pos[0], tgt.pos[1]]
+      // hurt: back off out of the fight and regenerate (the real house bots seem to)
+      if (!process.env.SIM_NORETREAT) {
+        if (m.hp < m.maxHp * 0.35) st.retreat = true
+        if (m.hp > m.maxHp * 0.85) st.retreat = false
+        if (st.retreat) {
+          const dx = m.pos[0] - tgt.pos[0], dy = m.pos[1] - tgt.pos[1], L = Math.hypot(dx, dy) || 1
+          goal = [m.pos[0] + (dx / L) * 80, m.pos[1] + (dy / L) * 80]
+          fightMove = null
+          act.fire = [false, false]
+          act.boost = m.energy > 20
+        }
+      }
     } else {
       // loot: nearest pickup if slot empty
       if (!m.weapons[1]) {

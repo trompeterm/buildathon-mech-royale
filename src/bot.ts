@@ -66,6 +66,7 @@ const K = {
   stealth: (process.env.K_STEALTH ?? "0") === "1",
   rear: (process.env.K_REAR ?? "0") === "1",
   finish: (process.env.K_FINISH ?? "1") === "1",
+  finish2: (process.env.K_FINISH2 ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -688,7 +689,8 @@ class Brain {
   chooseTarget(o: Observation, losEnemies: Track[], enemies: Track[]): Track | null {
     const me = o.self
     let best: Track | null = null, bs = -Infinity
-    const pool = losEnemies.length ? losEnemies : enemies.filter((e) => d3(e.pos, me.pos) < 60)
+    // nobody in sight: close tracked mechs, and (finish2) hurt ones further out that went to heal
+    const pool = losEnemies.length ? losEnemies : enemies.filter((e) => d3(e.pos, me.pos) < 60 || (K.finish2 && e.hp < e.maxHp * 0.5 && d3(e.pos, me.pos) < 230 && me.hp > me.max_hp * 0.5))
     for (const e of pool) {
       const d = d3(e.pos, me.pos)
       if (d > 300) continue
@@ -878,7 +880,7 @@ class Brain {
     this.fightLooting = false
     this.chasing = false
     // a hurt enemy broke line of sight to regenerate (45 HP/s after 5 s): we still track it, go finish it
-    if (K.finish && !tg.los && o.t - tg.seen < 4.5 && tg.hp < tg.maxHp * 0.45 && me.hp > me.max_hp * 0.5 && d2(tg.pos, pos) < 220) {
+    if (K.finish && !tg.los && o.t - tg.seen < 4.5 && tg.hp < tg.maxHp * (K.finish2 ? 0.5 : 0.45) && me.hp > me.max_hp * 0.5 && d2(tg.pos, pos) < 230) {
       const zc = this.zoneAt(o, o.t + 10)
       if (Math.hypot(tg.pos[0] - zc.c[0], tg.pos[1] - zc.c[1]) < zc.r - 5) {
         this.goTo(o, { x: tg.pos[0], y: tg.pos[1], z: tg.pos[2], why: "chase" }, act)
