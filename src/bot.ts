@@ -63,6 +63,8 @@ const K = {
   drops: (process.env.K_DROPS ?? "1") === "1",
   crateMem: (process.env.K_CRATEMEM ?? "1") === "1",
   sustain: (process.env.K_SUSTAIN ?? "1") === "1",
+  stealth: (process.env.K_STEALTH ?? "1") === "1",
+  rear: (process.env.K_REAR ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -693,6 +695,15 @@ class Brain {
       if (o.t - e.lastDmgToMe < 3) s += 120
       if (e.los) s += 80
       if (e.weapons.includes("lightning") && d < 60) s += 60
+      if (K.rear && losEnemies.length > 1) {
+        // facing this one puts the others behind us (rear hits deal 1.5x): prefer the target that keeps them in front
+        const a0 = Math.atan2(e.pos[1] - me.pos[1], e.pos[0] - me.pos[0])
+        for (const f of losEnemies) {
+          if (f.id === e.id || d3(f.pos, me.pos) > 230) continue
+          const af = Math.atan2(f.pos[1] - me.pos[1], f.pos[0] - me.pos[0])
+          if (Math.abs(wrap(af - a0)) > Math.PI / 2 - 0.15) s -= f.charging ? 70 : 40
+        }
+      }
       if (s > bs) { bs = s; best = e }
     }
     if (best) { this.lastTargetId = best.id; this.lastTargetT = o.t }
@@ -759,6 +770,16 @@ class Brain {
     const me = o.self
     const z = this.safeCircle(o)
     const d = d2(me.pos, z.c)
+    if (this.stealthy(o) && !this.endgame && d < z.r * 0.75) {
+      // sit where the squad's last known positions can't see us (standing still is silent)
+      const th: V3[] = []
+      const ts = [...this.tracks.values()].filter((e) => e.id !== me.id && o.t - e.seen < 60).sort((a, b) => b.seen - a.seen).slice(0, 4)
+      for (const e of ts) th.push([e.pos[0], e.pos[1], e.pos[2] + 8])
+      if (th.length) {
+        const c = this.findCover(o, th)
+        if (c) return { ...c, why: "lurk" }
+      }
+    }
     if (d < z.r * 0.5) {
       // stay put near walls (cover): find node with low clearance nearby
       return { x: me.pos[0], y: me.pos[1], why: "hold" }
@@ -1054,13 +1075,15 @@ class Brain {
   }
 
   /** hurt and out of combat: let the 45 HP/s regen run instead of shooting drones/crates (dealing damage resets it) */
+  /** late game: farming noise (gun 320 m) only advertises us to the hunting squad */
+  stealthy(o: Observation): boolean { return K.stealth && o.t >= 200 }
   regenHold(o: Observation): boolean {
-    if (!K.sustain) return false
     const me = o.self
-    if (me.hp >= me.max_hp * 0.8) return false
     // a drone shooting at us: fight back
     for (const e of this.dmgEvents) if (o.t - e.t < 2 && e.by !== null && e.by !== undefined && e.by >= 100) return false
-    return true
+    if (this.stealthy(o)) return true
+    if (!K.sustain) return false
+    return me.hp < me.max_hp * 0.8
   }
 
   takeLoot(o: Observation, act: Action) {
