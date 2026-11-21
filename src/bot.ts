@@ -58,6 +58,7 @@ const K = {
   farm3: (process.env.K_FARM3 ?? "0") === "1",
   endgame: (process.env.K_ENDGAME ?? "1") === "1",
   fightLoot: (process.env.K_FIGHTLOOT ?? "1") === "1",
+  loot2: (process.env.K_LOOT2 ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -236,6 +237,10 @@ class Brain {
         if (e.effect === "short") this.shortUntil = o.t + (this.C.weapons.lightning.short_s ?? 2)
       } else if (e.type === "take_failed") {
         this.badTargets.set(e.id, o.t + 20)
+      } else if (e.type === "kill" && K.loot2) {
+        // the victim drops its cubes + 2 where it died: remember that spot even if we never saw the cubes
+        const tr = this.tracks.get((e as any).target)
+        if (tr) this.cubeMem.set(-1000 - tr.id, { id: -1000 - tr.id, pos: [tr.pos[0], tr.pos[1], tr.pos[2]], t: o.t })
       } else if (e.type === "took") {
         this.badTargets.set(e.id, o.t + 999)
       }
@@ -914,7 +919,7 @@ class Brain {
     for (const c of this.cubeMem.values()) {
       if ((this.badTargets.get(c.id) ?? -1) > o.t || !ok(c.pos)) continue
       const d = d2(c.pos, pos)
-      if (d < 35 && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
+      if (d < (K.loot2 ? 55 : 35) && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
     }
     const myBest = Math.max(0, ...me.weapons.filter((w) => w && w.kind !== "gun").map((w) => WEAPON_VALUE[w!.kind] ?? 0))
     for (const p of this.pickMem.values()) {
@@ -922,7 +927,7 @@ class Brain {
       if (v <= 0 || this.weapon(o, p.kind) || (me.weapons[1] && v <= myBest + 0.4)) continue
       if ((this.badTargets.get(p.id) ?? -1) > o.t || !ok(p.pos)) continue
       const d = d2(p.pos, pos) - 10 // weapons are worth a little detour
-      if (d < 30 && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
+      if (d < (K.loot2 ? 40 : 30) && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
     }
     // don't walk into a lightning arc
     if (best && tg.weapons.includes("lightning") && Math.hypot(best.x - tg.pos[0], best.y - tg.pos[1]) < 50) return null
