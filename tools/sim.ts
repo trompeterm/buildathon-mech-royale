@@ -204,6 +204,7 @@ class Match {
     if (!n.alive) return
     n.hp -= amt
     n.target = src.id
+    src.lastDmgT = this.t // dealing damage also resets the regen timer
     src.events.push({ type: "hit", target: n.id, amount: amt, weapon: "x" })
     if (n.hp <= 0) { n.alive = false; for (let i = 0; i < CFG.npc.cubes; i++) this.cubes.push({ id: this.nextId++, pos: [n.pos[0] + i, n.pos[1], n.pos[2]] }) }
   }

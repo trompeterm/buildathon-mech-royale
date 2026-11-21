@@ -62,6 +62,7 @@ const K = {
   loot3: (process.env.K_LOOT3 ?? "0") === "1",
   drops: (process.env.K_DROPS ?? "1") === "1",
   crateMem: (process.env.K_CRATEMEM ?? "1") === "1",
+  sustain: (process.env.K_SUSTAIN ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -72,6 +73,7 @@ const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (
 const LATE_PREF = ["plating", "nanites", "armor"]
 
 const UPGRADE_PREF = [
+  ...((process.env.K_SUSTAIN ?? "1") === "1" ? ["nanites"] : []),
   "gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating",
   "gun_velocity", "nanites", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
   "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
@@ -993,6 +995,7 @@ class Brain {
     }
     // crates: approach to shooting range if not visible line
     for (const c of (K.crateMem ? this.crateMem.values() : o.crates)) {
+      if (this.regenHold(o)) break
       if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
@@ -1000,7 +1003,7 @@ class Brain {
       cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "crate", id: c.id }, score: farm ? 90 - dist * 0.6 : 35 - dist })
     }
     // NPC drones for cubes (if healthy)
-    if (me.hp / me.max_hp > (farm ? 0.45 : 0.55) && !enemiesSeen) {
+    if (me.hp / me.max_hp > (farm ? 0.45 : 0.55) && !enemiesSeen && !this.regenHold(o)) {
       for (const n of this.npcs.values()) {
         if (o.t - n.seen > 4) continue
         if (!okPlace(n.pos)) continue
@@ -1046,6 +1049,16 @@ class Brain {
       if (Math.hypot(this.W.nodeX(end) - g.x, this.W.nodeY(end) - g.y) > 8 && g.id !== undefined) this.badTargets.set(g.id, o.t + 30)
     }
     return g
+  }
+
+  /** hurt and out of combat: let the 45 HP/s regen run instead of shooting drones/crates (dealing damage resets it) */
+  regenHold(o: Observation): boolean {
+    if (!K.sustain) return false
+    const me = o.self
+    if (me.hp >= me.max_hp * 0.8) return false
+    // a drone shooting at us: fight back
+    for (const e of this.dmgEvents) if (o.t - e.t < 2 && e.by !== null && e.by !== undefined && e.by >= 100) return false
+    return true
   }
 
   takeLoot(o: Observation, act: Action) {
@@ -1143,7 +1156,7 @@ class Brain {
     if (target) {
       const sc = 1 + 0.05 * target.cubes
       tpos = target.pos; tvel = target.vel; hOff = 4.5 * sc; radius = 2.5 * sc; tlos = target.los; isMech = true
-    } else if (!this.quiet) {
+    } else if (!this.quiet && !this.regenHold(o)) {
       // npcs in sight
       let bn: Track | null = null, bd = Infinity
       for (const n of npcs) {
