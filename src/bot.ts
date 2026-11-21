@@ -40,6 +40,15 @@ type Track = {
   dmgToMe: number // decayed damage dealt to me
 }
 
+// tuning knobs (env overrides only used by the local simulator)
+const K = {
+  evadeFight: (process.env.K_EVADEFIGHT ?? "0") === "1",
+  laserBand: (process.env.K_LASERBAND ?? "0") === "1",
+  calmBoost: (process.env.K_CALMBOOST ?? "0") === "1",
+  gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
+  aggro: (process.env.K_AGGRO ?? "0") === "1",
+}
+
 const UPGRADE_PREF = [
   "armor", "plating", "nanites", "laser_damage", "laser_charge", "gun_damage", "gun_rate", "lightning_efficiency",
   "gun_mag", "sensors", "servos", "capacitor", "reactor", "jets", "lightning_range", "gun_velocity", "gyros",
@@ -437,8 +446,10 @@ class Brain {
     if (nLos >= 2) {
       let weakest = Infinity
       for (const e of losEnemies) weakest = Math.min(weakest, e.hp)
-      if (!(weakest < 350 && hpFrac > 0.5)) flee = true
+      if (!(weakest < 350 && hpFrac > 0.5) && !(K.aggro && hpFrac > 0.6)) flee = true
     }
+    // gun-only: don't start long-range trades; break line of sight and keep looting
+    if (K.gunAvoid && !me.weapons[1] && target && d3(target.pos, pos) > 100 && o.t - this.lastDamagedT > 1.5 && target.hp > 500) flee = true
     // cornered at close range by a single enemy we can beat: fight
     if (flee && nLos === 1 && target && target.los && d3(target.pos, pos) < 40 && target.hp < me.hp * 1.4) flee = false
     if (flee) this.hideUntil = Math.max(this.hideUntil, o.t + 4)
@@ -494,7 +505,7 @@ class Brain {
         // in cover: stand still (silent), keep aim at threats
         if (Math.hypot(cover.x - pos[0], cover.y - pos[1]) < 2.5) { act.move = [0, 0]; act.boost = false; label = "cover" }
         this.lastHideT = o.t
-      } else if (losEnemies.length || o.t - this.lastDamagedT < 2) {
+      } else if ((losEnemies.length || o.t - this.lastDamagedT < 2) && !(K.evadeFight && target && target.los)) {
         // no cover nearby: run away from the threats, inside the zone
         let ax = 0, ay = 0
         for (const tp of threatPts) { const dx = pos[0] - tp[0], dy = pos[1] - tp[1], L = Math.hypot(dx, dy) || 1; ax += dx / L / Math.max(30, L); ay += dy / L / Math.max(30, L) }
@@ -530,6 +541,8 @@ class Brain {
         label = lg.why
         moveSet = true
         if (needRotate || (lg.why === "drop" && me.energy > 50)) act.boost = true
+        // travel fast while calm: energy is otherwise idle (keep a reserve for climbing / fights)
+        if (K.calmBoost && me.energy > 50 && !lg.why.endsWith("-shoot") && lg.why !== "capture") act.boost = true
       }
     }
     if (!moveSet) {
@@ -674,7 +687,9 @@ class Brain {
     const has = (k: string) => !!this.weapon(o, k)
     // preferred distance band
     let lo = 35, hi = 110
-    if (has("laser")) { lo = 60; hi = 160 }
+    if (has("laser")) {
+      if (K.laserBand && !tg.weapons.some((w) => w !== "gun")) { lo = 150; hi = 195 } else { lo = 60; hi = 160 }
+    }
     if (has("lightning")) { lo = 15; hi = 38 }
     if (tg.weapons.includes("lightning") && !has("lightning")) lo = Math.max(lo, 60)
     if (tg.weapons.includes("mortar") && !has("lightning")) lo = Math.max(lo, 40)
