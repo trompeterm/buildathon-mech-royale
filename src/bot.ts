@@ -43,7 +43,7 @@ type Track = {
 // tuning knobs (env overrides only used by the local simulator)
 const K = {
   evadeFight: (process.env.K_EVADEFIGHT ?? "0") === "1",
-  laserBand: (process.env.K_LASERBAND ?? "0") === "1",
+  laserBand: (process.env.K_LASERBAND ?? "1") === "1",
   calmBoost: (process.env.K_CALMBOOST ?? "1") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
@@ -55,7 +55,7 @@ const K = {
   farm: (process.env.K_FARM ?? "1") === "1",
   farm2: (process.env.K_FARM2 ?? "1") === "1",
   scan: (process.env.K_SCAN ?? "0") === "1",
-  farm3: (process.env.K_FARM3 ?? "1") === "1",
+  farm3: (process.env.K_FARM3 ?? "0") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -64,7 +64,7 @@ const UPGRADE_PREF = [
   "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
-const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: 2, mortar: 0.5, gun: 0 }
+const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: (process.env.K_LIGHTNING ?? "0") === "1" ? 3.5 : 2, mortar: 0.5, gun: 0 }
 
 type Goal = { x: number; y: number; z?: number; why: string; id?: number }
 
