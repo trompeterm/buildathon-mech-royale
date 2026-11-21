@@ -48,7 +48,8 @@ const K = {
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
   aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
-  hunt: (process.env.K_HUNT ?? "1") === "1",
+  hunt: (process.env.K_HUNT ?? "0") === "1",
+  duck: (process.env.K_DUCK ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -525,6 +526,43 @@ class Brain {
       }
     }
 
+    // peek combat: step behind nearby cover while we can't shoot back or a big hit is coming
+    if (!moveSet && K.duck && target && target.los && d3(target.pos, pos) > 25) {
+      const gunW = this.weapon(o, "gun")
+      const lzW = this.weapon(o, "laser")
+      const ltW = this.weapon(o, "lightning")
+      const myCharging = !!lzW && (lzW.charge ?? 0) > 0
+      const laserReady = !!lzW && (lzW.cooldown ?? 0) < 0.3 && o.t > this.shortUntil
+      const lightningOn = !!ltW && d3(target.pos, pos) < (ltW.stats.range ?? 45) - 3
+      const reloading = !!gunW && (gunW.reload ?? 0) > 0.4 && !laserReady && !lightningOn
+      const laserAtMe = losEnemies.some((e) => e.charging && Math.abs(wrap(e.aim[0] - Math.atan2(pos[1] - e.pos[1], pos[0] - e.pos[0]))) < 0.12)
+      let burst = 0
+      for (const e of this.dmgEvents) if (o.t - e.t <= 1.0 && e.weapon !== "zone") burst += e.amt
+      if ((reloading || laserAtMe || burst > 140) && !myCharging) {
+        const ds = this.duckSpot(o, target, losEnemies)
+        if (ds) {
+          if (o.t - this.duckT > 1) this.peekPos = [pos[0], pos[1], pos[2]]
+          this.duckT = o.t
+          this.peekTid = target.id
+          this.goTo(o, ds, act)
+          if (me.energy > 15) act.boost = true
+          if (Math.hypot(ds.x - pos[0], ds.y - pos[1]) < 2.5) { act.move = [0, 0]; act.boost = false }
+          label = "duck"
+          moveSet = true
+        }
+      }
+    }
+    // after ducking: step back out to where we had a line on the target
+    if (!moveSet && K.duck && this.peekPos && o.t - this.duckT < 4 && o.t - this.duckT > 0.15 && hpFrac > 0.3) {
+      const pt = this.tracks.get(this.peekTid)
+      const reloadingNow = (this.weapon(o, "gun")?.reload ?? 0) > 0.4 && !this.weapon(o, "laser")
+      if (pt && o.t - pt.seen < 5 && !(target && target.los)) {
+        if (reloadingNow) { act.move = [0, 0]; label = "ducked"; this.duckT = o.t }
+        else { this.goTo(o, { x: this.peekPos[0], y: this.peekPos[1], z: this.peekPos[2], why: "peek" }, act); label = "peek" }
+        moveSet = true
+      }
+    }
+    if (target && target.los) this.duckT = Math.min(this.duckT, o.t - 0.15) // seen again: peek done
     if (!moveSet && target) {
       _t0 = performance.now()
       this.combatMove(o, target, act)
@@ -675,6 +713,36 @@ class Brain {
     return this.zoneGoal(o)
   }
 
+  duckT = -99
+  peekPos: V3 | null = null
+  peekTid = -1
+  duckCache: { g: Goal | null; t: number; tid: number } | null = null
+  /** a spot within ~30 m of path that the target (and other shooters) cannot see */
+  duckSpot(o: Observation, tg: Track, shooters: Track[]): Goal | null {
+    const me = o.self
+    const W = this.W
+    const hc = 4.5 * (1 + 0.05 * me.cubes), ht = 9 * (1 + 0.05 * me.cubes) - 0.3
+    const threats: V3[] = []
+    for (const e of [tg, ...shooters.filter((s) => s.id !== tg.id)].slice(0, 3)) threats.push([e.pos[0], e.pos[1], e.pos[2] + 8 * (1 + 0.05 * e.cubes)])
+    const c = this.duckCache
+    if (c && c.tid === tg.id && o.t - c.t < 0.5) return c.g
+    if (c && c.g && c.tid === tg.id && o.t - c.t < 4 && this.hiddenAt(c.g.x, c.g.y, c.g.z ?? 0, threats, hc, ht)) { c.t = o.t; return c.g }
+    const s = W.freeNode(me.pos[0], me.pos[1], 10, me.pos[2])
+    if (s < 0) return null
+    const zc = this.zoneAt(o, o.t + 10)
+    let evals = 0
+    const p = W.nearestWhere(s, 32, (n) => {
+      if (W.gClear[n] > 5 && n % 3 !== 0) return false
+      const x = W.nodeX(n), y = W.nodeY(n)
+      if (Math.hypot(x - zc.c[0], y - zc.c[1]) > zc.r - 5) return false
+      if (++evals > 160) return true
+      return this.hiddenAt(x, y, W.gH[n], threats, hc, ht)
+    }, null, 1.2, 2500, this.startMs + 20)
+    let g: Goal | null = null
+    if (p && p.length && evals <= 160) { const n = p[p.length - 1]; g = { x: W.nodeX(n), y: W.nodeY(n), z: W.gH[n], why: "duck" } }
+    this.duckCache = { g, t: o.t, tid: tg.id }
+    return g
+  }
   coverCache: { g: Goal; t: number } | null = null
   hiddenAt(x: number, y: number, h: number, threats: V3[], hc: number, ht: number): boolean {
     const W = this.W
