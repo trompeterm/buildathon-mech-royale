@@ -270,11 +270,11 @@ class Match {
           if (w.kind === "mortar") fire[s] = false
         }
         act.fire = fire
-        if (this.t > st.strafeT) { st.strafe = this.r() < 0.5 ? -1 : 1; st.strafeT = this.t + 0.5 + this.r() * 1.5 }
+        if (this.t > st.strafeT) { st.strafe = this.r() < 0.8 ? -st.strafe : st.strafe; st.strafeT = this.t + 0.6 + this.r() * 0.6; st.boost = this.r() < 0.35 }
         const ux = (tp[0] - m.pos[0]) / d, uy = (tp[1] - m.pos[1]) / d
         const want = m.weapons.some((w) => w?.kind === "lightning") ? 30 : 90
         const rad = d > want + 20 ? 1 : d < want - 20 ? -1 : 0
-        fightMove = [-uy * st.strafe * (m.tier >= 2 ? 1 : 0.3) + ux * rad, ux * st.strafe * (m.tier >= 2 ? 1 : 0.3) + uy * rad]
+        fightMove = [-uy * st.strafe * 1 + ux * rad, ux * st.strafe * 1 + uy * rad]
       }
       if (!fightMove && !(m as any).noChase) goal = [tgt.pos[0], tgt.pos[1]]
     } else {
@@ -288,7 +288,7 @@ class Match {
     }
     // keep in zone
     if (Math.hypot(m.pos[0] - zn.c[0], m.pos[1] - zn.c[1]) > zn.r - 10) { goal = [zn.c[0], zn.c[1]]; fightMove = null }
-    if (fightMove) act.move = fightMove
+    if (fightMove) { act.move = fightMove; act.boost = !!st.boost && m.energy > 20 }
     else {
       if (!st.path || this.t - st.pathT > 2.5 || Math.hypot(st.goal[0] - goal[0], st.goal[1] - goal[1]) > 15) {
         const s = W.freeNode(m.pos[0], m.pos[1], 10, m.pos[2]), g = W.freeNode(goal[0], goal[1], 14)
@@ -704,7 +704,8 @@ for (let i = 0; i < N; i++) {
     const me = res[b]
     const pts = 16 - me.place
     tot += pts; all.push(pts)
-    console.log(`match ${seed0 + i} bot${b}: place ${me.place} pts ${pts} kills ${me.kills} died ${me.alive ? "-" : me.deathT.toFixed(0) + "s by " + me.cause} cubes ${me.cubes} w=${me.weapons.map((w) => w?.kind)} hp=${me.hp.toFixed(0)} shots ${me.shots ?? 0} hits ${me.hits ?? 0} dealt ${(me.dealt ?? 0).toFixed(0)} | killer: ${(() => { const k = res.find((x) => me.cause.includes(':' + x.id + '/')); return k ? `shots ${k.shots} hits ${k.hits} hp ${k.hp.toFixed(0)}` : '' })()}`)
+    const hs = res.filter((x) => !x.isBot).reduce((a, x) => a + (x.shots ?? 0), 0), hh = res.filter((x) => !x.isBot).reduce((a, x) => a + (x.hits ?? 0), 0)
+    console.log(`match ${seed0 + i} bot${b}: hshots ${hs} hhits ${hh} place ${me.place} pts ${pts} kills ${me.kills} died ${me.alive ? "-" : me.deathT.toFixed(0) + "s by " + me.cause} cubes ${me.cubes} w=${me.weapons.map((w) => w?.kind)} hp=${me.hp.toFixed(0)} shots ${me.shots ?? 0} hits ${me.hits ?? 0} dealt ${(me.dealt ?? 0).toFixed(0)} | killer: ${(() => { const k = res.find((x) => me.cause.includes(':' + x.id + '/')); return k ? `shots ${k.shots} hits ${k.hits} hp ${k.hp.toFixed(0)}` : '' })()}`)
   }
   times.push(...m.timing)
   if (args.includes('--hist')) console.log('   ', Object.entries(m.hist).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${(v / 10).toFixed(0)}s`).join(' '))

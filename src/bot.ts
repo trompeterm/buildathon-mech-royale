@@ -58,6 +58,11 @@ const K = {
   farm3: (process.env.K_FARM3 ?? "0") === "1",
 }
 
+const DODGE = parseInt(process.env.K_DODGE ?? "1")
+const BOOSTLOW = (process.env.K_BOOSTLOW ?? "0") === "1"
+const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser charging at us, cover <= 12 m
+const TAU = parseFloat(process.env.K_TAU ?? "0.6") // lead damping time constant (0 = plain linear lead)
+
 const UPGRADE_PREF = [
   "gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating",
   "gun_velocity", "nanites", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
@@ -347,13 +352,14 @@ class Brain {
     const airborne = Math.abs(tv[2]) > 0.5
     for (let k = 0; k < 4; k++) {
       const lat = tt + 0.06
+      const hl = TAU > 0 ? TAU * (1 - Math.exp(-lat / TAU)) : lat // strafers reverse: expected drift decays
       let pz = tp[2] + tv[2] * lat
       if (airborne) {
         pz -= 0.5 * g * lat * lat
-        const s = this.W.surfAt(tp[0] + tv[0] * lat, tp[1] + tv[1] * lat)
+        const s = this.W.surfAt(tp[0] + tv[0] * hl, tp[1] + tv[1] * hl)
         if (pz < s) pz = s
       }
-      pt = [tp[0] + tv[0] * lat, tp[1] + tv[1] * lat, pz + hOff]
+      pt = [tp[0] + tv[0] * hl, tp[1] + tv[1] * hl, pz + hOff]
       const dist = Math.max(0, d3(m, pt) - 3)
       tt = dist / speed
     }
@@ -535,7 +541,7 @@ class Brain {
     }
 
     // peek combat: step behind nearby cover while we can't shoot back or a big hit is coming
-    if (!moveSet && K.duck && target && target.los && d3(target.pos, pos) > 25) {
+    if (!moveSet && (K.duck || DUCKL) && target && target.los && d3(target.pos, pos) > 25) {
       const gunW = this.weapon(o, "gun")
       const lzW = this.weapon(o, "laser")
       const ltW = this.weapon(o, "lightning")
@@ -546,7 +552,7 @@ class Brain {
       const laserAtMe = losEnemies.some((e) => e.charging && Math.abs(wrap(e.aim[0] - Math.atan2(pos[1] - e.pos[1], pos[0] - e.pos[0]))) < 0.12)
       let burst = 0
       for (const e of this.dmgEvents) if (o.t - e.t <= 1.0 && e.weapon !== "zone") burst += e.amt
-      if ((reloading || laserAtMe || burst > 140) && !myCharging) {
+      if ((DUCKL ? laserAtMe : (reloading || laserAtMe || burst > 140)) && !myCharging) {
         const ds = this.duckSpot(o, target, losEnemies)
         if (ds) {
           if (o.t - this.duckT > 1) this.peekPos = [pos[0], pos[1], pos[2]]
@@ -561,9 +567,9 @@ class Brain {
       }
     }
     // after ducking: step back out to where we had a line on the target
-    if (!moveSet && K.duck && this.peekPos && o.t - this.duckT < 4 && o.t - this.duckT > 0.15 && hpFrac > 0.3) {
+    if (!moveSet && (K.duck || DUCKL) && this.peekPos && o.t - this.duckT < 4 && o.t - this.duckT > (DUCKL ? 0.8 : 0.15) && hpFrac > 0.3) {
       const pt = this.tracks.get(this.peekTid)
-      const reloadingNow = (this.weapon(o, "gun")?.reload ?? 0) > 0.4 && !this.weapon(o, "laser")
+      const reloadingNow = !DUCKL && (this.weapon(o, "gun")?.reload ?? 0) > 0.4 && !this.weapon(o, "laser")
       if (pt && o.t - pt.seen < 5 && !(target && target.los)) {
         if (reloadingNow) { act.move = [0, 0]; label = "ducked"; this.duckT = o.t }
         else { this.goTo(o, { x: this.peekPos[0], y: this.peekPos[1], z: this.peekPos[2], why: "peek" }, act); label = "peek" }
@@ -741,7 +747,7 @@ class Brain {
     if (s < 0) return null
     const zc = this.zoneAt(o, o.t + 10)
     let evals = 0
-    const p = W.nearestWhere(s, 32, (n) => {
+    const p = W.nearestWhere(s, DUCKL ? 12 : 32, (n) => {
       if (W.gClear[n] > 5 && n % 3 !== 0) return false
       const x = W.nodeX(n), y = W.nodeY(n)
       if (Math.hypot(x - zc.c[0], y - zc.c[1]) > zc.r - 5) return false
@@ -811,8 +817,9 @@ class Brain {
     if (tg.weapons.includes("lightning") && !has("lightning")) lo = Math.max(lo, 60)
     if (tg.weapons.includes("mortar") && !has("lightning")) lo = Math.max(lo, 40)
     if (o.t > this.strafeUntil) {
-      this.strafe = this.rnd() < 0.5 ? -1 : 1
-      this.strafeUntil = o.t + 0.35 + this.rnd() * 0.7
+      if (DODGE === 1) { this.strafe = -this.strafe || 1; this.strafeUntil = o.t + 0.25 + this.rnd() * 0.3 }
+      else if (DODGE === 2) { this.strafe = -this.strafe || 1; this.strafeUntil = o.t + 0.5 + this.rnd() * 0.4 }
+      else { this.strafe = this.rnd() < 0.5 ? -1 : 1; this.strafeUntil = o.t + 0.35 + this.rnd() * 0.7 }
     }
     const ux = (tg.pos[0] - pos[0]) / Math.max(1, d), uy = (tg.pos[1] - pos[1]) / Math.max(1, d)
     let radial = 0
@@ -840,7 +847,7 @@ class Brain {
     }
     act.move = [mx, my]
     const charging = (this.weapon(o, "laser")?.charge ?? 0) > 0
-    act.boost = me.energy > 35 && !charging
+    act.boost = me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) && !charging
   }
 
   lootGoal(o: Observation, enemiesSeen: boolean): Goal | null {
