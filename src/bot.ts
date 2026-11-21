@@ -33,6 +33,8 @@ type Track = {
   cubes: number
   weapons: string[]
   charging: boolean
+  chargeT?: number
+  jinked?: boolean
   seen: number // last time seen in obs.mechs
   visible: boolean // listed this tick
   los: boolean // we have a clear line to it this tick
@@ -68,6 +70,8 @@ const K = {
   finish: (process.env.K_FINISH ?? "1") === "1",
   finish2: (process.env.K_FINISH2 ?? "0") === "1",
   capCubes: (process.env.K_CAPCUBES ?? "0") === "1",
+  brawl: (process.env.K_BRAWL ?? "0") === "1",
+  jink: (process.env.K_JINK ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -138,6 +142,7 @@ class Brain {
   quiet = false
   fightLooting = false
   chasing = false
+  jinkUntil = -9
   climbWaitT = -99
   noClimbUntil = -99
   lastStuckT = -99
@@ -228,6 +233,7 @@ class Brain {
       if (m.max_hp !== undefined) tr.maxHp = m.max_hp
       if (m.cubes !== undefined) tr.cubes = m.cubes
       if (m.weapons) tr.weapons = m.weapons
+      if (m.charging && !tr.charging) { tr.chargeT = o.t; tr.jinked = false }
       tr.charging = !!m.charging
       tr.seen = o.t
       tr.visible = true
@@ -912,8 +918,10 @@ class Brain {
     else radial = 0
     if (!tg.los && d < 250) radial = 0.4 // close in to regain sight? mild
     if (K.focus && tg.hp < 350 && me.hp > tg.hp * 1.5 && d > 25) radial = 1 // finish it before it regenerates
-    let mx = -uy * this.strafe + ux * radial * 0.8
-    let my = ux * this.strafe + uy * radial * 0.8
+    // lightning shorts lasers and out-damages everything inside 45 m: close the gap fast, weaving a little
+    const rush = K.brawl && has("lightning") && d > 50 && d < 260 && tg.los
+    let mx = rush ? -uy * this.strafe * 0.4 + ux : -uy * this.strafe + ux * radial * 0.8
+    let my = rush ? ux * this.strafe * 0.4 + uy : ux * this.strafe + uy * radial * 0.8
     // check walkability ahead; flip strafe if blocked
     const L = Math.hypot(mx, my) || 1
     mx /= L; my /= L
@@ -929,9 +937,28 @@ class Brain {
       if (W.gBlocked[ahead2]) { mx = ux * radial; my = uy * radial }
       if (outAhead) { const zx = z.c[0] - pos[0], zy = z.c[1] - pos[1], zl = Math.hypot(zx, zy) || 1; mx = zx / zl; my = zy / zl }
     }
+    // a laser aimed at us fires ~0.8 s after its charge starts (house bots release on a timer): change direction
+    // and burst just before, so the beam goes where we were heading
+    if (K.jink) {
+      for (const e of this.tracks.values()) {
+        if (!e.charging || e.jinked || e.chargeT === undefined || !e.los || o.t - e.seen > 0.01) continue
+        const el = o.t - e.chargeT
+        const yawToMe = Math.atan2(pos[1] - e.pos[1], pos[0] - e.pos[0])
+        if (el < 0.45 || el > 0.9 || Math.abs(wrap(e.aim[0] - yawToMe)) > 0.1) continue
+        e.jinked = true
+        this.strafe = -this.strafe
+        this.strafeUntil = o.t + 0.5
+        mx = -uy * this.strafe + ux * radial * 0.3
+        my = ux * this.strafe + uy * radial * 0.3
+        const L2 = Math.hypot(mx, my) || 1
+        mx /= L2; my /= L2
+        this.jinkUntil = o.t + 0.5
+        break
+      }
+    }
     act.move = [mx, my]
     const charging = (this.weapon(o, "laser")?.charge ?? 0) > 0
-    act.boost = me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) && !charging
+    act.boost = (me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) || (o.t < this.jinkUntil && me.energy > 12)) && !charging
   }
 
   cubeMem = new Map<number, { id: number; pos: V3; t: number }>()
