@@ -54,7 +54,7 @@ const K = {
   focus: (process.env.K_FOCUS ?? "0") === "1",
   farm: (process.env.K_FARM ?? "1") === "1",
   farm2: (process.env.K_FARM2 ?? "1") === "1",
-  scan: (process.env.K_SCAN ?? "1") === "1",
+  scan: (process.env.K_SCAN ?? "0") === "1",
 }
 
 const UPGRADE_PREF = [
