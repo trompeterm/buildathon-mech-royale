@@ -82,7 +82,12 @@ const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (
 
 const LATE_PREF = ["plating", "nanites", "armor"]
 
-const UPGRADE_PREF = [
+const UPGRADE_PREF = (process.env.K_UPG3 ?? "1") === "1" ? [
+  // by effective fighting strength per pick: +15% HP is worth ~+15% damage in a duel and counts against every enemy
+  "plating", "laser_damage", "armor", "nanites", "gun_damage", "gun_rate", "laser_charge", "gun_velocity", "gun_mag",
+  "lightning_efficiency", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
+  "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
+] : [
   ...((process.env.K_SUSTAIN ?? "1") === "1" ? ["nanites"] : []),
   // hitscan laser never misses a strafer; faster bullets miss less: those first
   ...((process.env.K_UPG2 ?? "1") === "1"
