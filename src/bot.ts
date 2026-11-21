@@ -43,7 +43,7 @@ type Track = {
 // tuning knobs (env overrides only used by the local simulator)
 const K = {
   evadeFight: (process.env.K_EVADEFIGHT ?? "0") === "1",
-  laserBand: (process.env.K_LASERBAND ?? "1") === "1",
+  laserBand: (process.env.K_LASERBAND ?? "0") === "1",
   calmBoost: (process.env.K_CALMBOOST ?? "1") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
@@ -56,12 +56,15 @@ const K = {
   farm2: (process.env.K_FARM2 ?? "1") === "1",
   scan: (process.env.K_SCAN ?? "0") === "1",
   farm3: (process.env.K_FARM3 ?? "0") === "1",
+  endgame: (process.env.K_ENDGAME ?? "1") === "1",
 }
 
-const DODGE = parseInt(process.env.K_DODGE ?? "1")
+const DODGE = parseInt(process.env.K_DODGE ?? "0")
 const BOOSTLOW = (process.env.K_BOOSTLOW ?? "0") === "1"
 const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser charging at us, cover <= 12 m
-const TAU = parseFloat(process.env.K_TAU ?? "0.6") // lead damping time constant (0 = plain linear lead)
+const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (0 = plain linear lead)
+
+const LATE_PREF = ["plating", "nanites", "armor"]
 
 const UPGRADE_PREF = [
   "gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating",
@@ -118,6 +121,11 @@ class Brain {
   lastHideT = -99
   lastTargetId = -1
   lastTargetT = -99
+  quiet = false
+  climbWaitT = -99
+  noClimbUntil = -99
+  lastStuckT = -99
+  endgame = false
   fdbg = ""
 
   constructor(hello: Hello, world?: World, warm = true) {
@@ -271,7 +279,9 @@ class Brain {
       }
     }
     const _ta = performance.now()
+    W.maxClimb = o.t < this.noClimbUntil ? 1.5 : 30
     const p = W.astar(s, gn, pen, 25000, 1.2, 1.5, this.startMs + 24)
+    W.maxClimb = 30
     lap('astar', _ta)
     this.path = p
     this.pathGoal = g
@@ -319,7 +329,7 @@ class Brain {
           // only start if we have the energy for it
           const req = (need / (me.stats.max_rise_speed ?? 10)) * (me.stats.jet_drain ?? 15) + 8
           if (me.energy >= Math.min(req, me.max_energy - 1)) jump = true
-          else { dx *= 0.2; dy *= 0.2 }
+          else { dx *= 0.2; dy *= 0.2; this.climbWaitT = o.t } // wait for energy: no boosting meanwhile
         } else jet = true
       }
     } else if (!me.grounded && this.jetting && need > 0.3) jet = true
@@ -441,7 +451,13 @@ class Brain {
     const myW = me.weapons.filter((w) => w).map((w) => w!.kind)
 
     // choose a target
-    const target = this.chooseTarget(o, losEnemies, enemies)
+    // endgame: last two circles. Head for the final center; in the last stretch don't start fights, so HP
+    // is full when the circle closes (no regen, 260 HP/s for everyone, last HP standing wins)
+    const endgame = K.endgame && o.zone.next_radius <= 25.01 && o.zone.radius <= 70.01
+    this.quiet = endgame && (o.zone.next_radius < 0.01 || o.t > o.zone.shrink_start + 10)
+    let target = this.chooseTarget(o, losEnemies, enemies)
+    if (this.quiet && target && o.t - target.lastDmgToMe > 2 && d3(target.pos, pos) > 30) target = null
+    this.endgame = endgame
     if (target) myDps = this.estDps(myW, d3(target.pos, pos))
 
     // fight or flight
@@ -505,7 +521,7 @@ class Brain {
       // zone first
       const g = this.zoneGoal(o)
       this.goTo(o, g, act)
-      act.boost = act.boost || outside || me.energy > 60
+      act.boost = act.boost || ((outside && me.energy > 30) || me.energy > 60)
       moveSet = true
       label = "zone"
     }
@@ -532,6 +548,8 @@ class Brain {
         let gx = pos[0] + ax * 70, gy = pos[1] + ay * 70
         const dz = Math.hypot(gx - z.c[0], gy - z.c[1])
         if (dz > z.r) { gx = z.c[0] + ((gx - z.c[0]) * z.r) / dz; gy = z.c[1] + ((gy - z.c[1]) * z.r) / dz }
+        // never run into a map edge
+        gx = clamp(gx, this.W.minX + 30, this.W.minX + this.W.nx - 30); gy = clamp(gy, this.W.minY + 30, this.W.minY + this.W.ny - 30)
         this.goTo(o, { x: gx, y: gy, why: "evade" }, act)
         if (me.energy > 20) act.boost = true
         label = "evade"
@@ -593,7 +611,7 @@ class Brain {
     if (!moveSet) {
       // loot / drops / npcs / roam
       _t0 = performance.now()
-      const lg = this.lootGoal(o, K.farm3 ? enemies.some((e) => d3(e.pos, pos) < 140) || o.t - this.lastDamagedT < 4 : enemies.length > 0)
+      const lg = this.quiet ? null : this.lootGoal(o, K.farm3 ? enemies.some((e) => d3(e.pos, pos) < 140) || o.t - this.lastDamagedT < 4 : enemies.length > 0)
       lap('loot', _t0)
       if (lg) {
         this.goTo(o, lg, act)
@@ -636,6 +654,8 @@ class Brain {
     if (gun && (gun.ammo ?? 1) < (gun.stats.mag ?? 12) && (gun.reload ?? 0) === 0 && !target && (gun.ammo ?? 1) < 6 && o.t - this.lastDamagedT > 2) act.reload = true
     if (gun && gun.ammo === 0 && (gun.reload ?? 0) === 0) act.reload = true
 
+    // waiting at a wall for climb energy: never boost (boost drains the energy we are waiting for)
+    if (o.t - this.climbWaitT < 0.25 && me.grounded) act.boost = false
     // never boost on the ground with very low energy (keep reserve to climb out)
     if (act.boost && me.grounded && me.energy < 12 && !outside) act.boost = false
 
@@ -670,6 +690,7 @@ class Brain {
     for (let i = 0; i < ch.length; i++) {
       let r = UPGRADE_PREF.indexOf(ch[i].id)
       if (r < 0) r = 50
+      if (K.endgame && o.t > 240) { const l = LATE_PREF.indexOf(ch[i].id); if (l >= 0) r = l - 10 }
       const def = (this.C.upgrades as any[]).find((u) => u.id === ch[i].id)
       if (def?.requires && !mine.has(def.requires)) r += 40
       if (r < bs) { bs = r; best = i }
@@ -682,8 +703,8 @@ class Brain {
     const z = this.safeCircle(o)
     const c = z.c
     const d = d2(me.pos, c)
-    // aim for a point inside the safe circle on our side
-    const r = Math.max(0, z.r * 0.6)
+    // aim for a point inside the safe circle on our side (the exact final center in the endgame)
+    const r = this.endgame ? (o.zone.next_radius < 0.01 ? 0 : 3) : Math.max(0, z.r * 0.6)
     if (d <= r || d < 1) return { x: c[0], y: c[1], why: "zone" }
     const f = (d - r) / d
     return { x: me.pos[0] + (c[0] - me.pos[0]) * f, y: me.pos[1] + (c[1] - me.pos[1]) * f, why: "zone" }
@@ -973,6 +994,8 @@ class Brain {
         this.unstickUntil = o.t + 0.8
         this.unstickDir = this.rnd() < 0.5 ? -1 : 1
         this.pathT = -99 // force replan
+        if (o.t - this.lastStuckT < 8) this.noClimbUntil = o.t + 6 // repeated: stop trying to climb, find another way
+        this.lastStuckT = o.t
       }
       this.progressT = o.t
       this.progressPos = [me.pos[0], me.pos[1], me.pos[2]]
@@ -1029,7 +1052,7 @@ class Brain {
     if (target) {
       const sc = 1 + 0.05 * target.cubes
       tpos = target.pos; tvel = target.vel; hOff = 4.5 * sc; radius = 2.5 * sc; tlos = target.los; isMech = true
-    } else {
+    } else if (!this.quiet) {
       // npcs in sight
       let bn: Track | null = null, bd = Infinity
       for (const n of npcs) {

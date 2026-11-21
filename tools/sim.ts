@@ -312,6 +312,7 @@ class Match {
     // take weapons
     for (const p of this.pickups) if (Math.hypot(p.pos[0] - m.pos[0], p.pos[1] - m.pos[1]) < 3.8 && !m.weapons[1] && p.kind !== "mortar") act.take = p.id
     if (m.offer) act.pick = 0
+    if (process.env.SIM_PEACE) act.fire = [false, false]
     if (m.weapons[0]?.ammo === 0) act.reload = true
     return act
   }
@@ -636,6 +637,7 @@ class Match {
           const o = this.obs(m)
           const t0 = performance.now()
           try { a = m.ctrl.act(o) } catch (e) { console.error("act error", e); a = {} }
+          if (process.env.SIM_PEACE) a.fire = [false, false]
           this.timing.push(performance.now() - t0)
           const lab = (m.ctrl.dbg as string).split(' ')[0]
           this.hist[lab] = (this.hist[lab] ?? 0) + 1
@@ -668,7 +670,7 @@ class Match {
           }
         }
       }
-      if (this.verbose && this.mechs[0].alive) { const b = this.mechs[0]; const vis = this.mechs.filter((x) => x !== b && x.alive && Math.hypot(x.pos[0]-b.pos[0], x.pos[1]-b.pos[1]) < 200).map((x) => `${x.id}@${Math.hypot(x.pos[0]-b.pos[0], x.pos[1]-b.pos[1]).toFixed(0)}`).join(","); if (this.tick % 10 === 0) console.log(`  ${this.t.toFixed(1)} ${b.ctrl.dbg} pos=${b.pos.map((v) => v.toFixed(0))} aim=${b.aim.map((v) => v.toFixed(2))} cmd=${JSON.stringify(b.cmd.move?.map((v: number) => +v.toFixed(2)))} f=${b.cmd.fire} near=${vis}`) }
+      if (this.verbose && this.mechs[0].alive) { const b = this.mechs[0]; const vis = this.mechs.filter((x) => x !== b && x.alive && Math.hypot(x.pos[0]-b.pos[0], x.pos[1]-b.pos[1]) < 200).map((x) => `${x.id}@${Math.hypot(x.pos[0]-b.pos[0], x.pos[1]-b.pos[1]).toFixed(0)}`).join(","); if (this.tick % 10 === 0) console.log(`  ${this.t.toFixed(1)} ${b.ctrl.dbg} path=${b.ctrl.path?.length ?? "-"}${(b.ctrl.path as any)?.partial ? "P" : ""} goal=${b.ctrl.pathGoal ? b.ctrl.pathGoal.x.toFixed(0) + "," + b.ctrl.pathGoal.y.toFixed(0) : "-"} ncl=${(b.ctrl.noClimbUntil > this.t) ? 1 : 0} cw=${(this.t - b.ctrl.climbWaitT < 0.3) ? 1 : 0} pos=${b.pos.map((v) => v.toFixed(0))} aim=${b.aim.map((v) => v.toFixed(2))} cmd=${JSON.stringify(b.cmd.move?.map((v: number) => +v.toFixed(2)))} f=${b.cmd.fire} near=${vis}`) }
       if (this.verbose && this.tick % 100 === 0) {
         const b = this.mechs[0]
         console.log(`t=${this.t.toFixed(0)} alive=${alive.length} bot hp=${b.hp.toFixed(0)} pos=${b.pos.map((v) => v.toFixed(0))} w=${b.weapons.map((w) => w?.kind)} cubes=${b.cubes} zone r=${this.zoneNow().r.toFixed(0)} d=${Math.hypot(b.pos[0] - this.zoneNow().c[0], b.pos[1] - this.zoneNow().c[1]).toFixed(0)} hunters=${this.hunters}`)
