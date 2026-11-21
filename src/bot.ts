@@ -51,6 +51,7 @@ const K = {
   hunt: (process.env.K_HUNT ?? "0") === "1",
   duck: (process.env.K_DUCK ?? "0") === "1",
   gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
+  focus: (process.env.K_FOCUS ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -106,6 +107,8 @@ class Brain {
   jetting = false
   dbg = ""
   lastHideT = -99
+  lastTargetId = -1
+  lastTargetT = -99
   fdbg = ""
 
   constructor(hello: Hello, world?: World, warm = true) {
@@ -639,12 +642,14 @@ class Brain {
     for (const e of pool) {
       const d = d3(e.pos, me.pos)
       if (d > 300) continue
-      let s = -d * 0.5 - e.hp * 0.15
+      let s = -d * 0.5 - e.hp * (K.focus ? 0.35 : 0.15)
+      if (K.focus && e.id === this.lastTargetId && o.t - this.lastTargetT < 1.5) s += 90 // stick with it: split damage kills nothing
       if (o.t - e.lastDmgToMe < 3) s += 120
       if (e.los) s += 80
       if (e.weapons.includes("lightning") && d < 60) s += 60
       if (s > bs) { bs = s; best = e }
     }
+    if (best) { this.lastTargetId = best.id; this.lastTargetT = o.t }
     return best
   }
 
@@ -811,6 +816,7 @@ class Brain {
     else if (d > hi) radial = 1
     else radial = 0
     if (!tg.los && d < 250) radial = 0.4 // close in to regain sight? mild
+    if (K.focus && tg.hp < 350 && me.hp > tg.hp * 1.5 && d > 25) radial = 1 // finish it before it regenerates
     let mx = -uy * this.strafe + ux * radial * 0.8
     let my = ux * this.strafe + uy * radial * 0.8
     // check walkability ahead; flip strafe if blocked
