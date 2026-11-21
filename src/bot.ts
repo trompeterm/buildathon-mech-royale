@@ -59,6 +59,7 @@ const K = {
   endgame: (process.env.K_ENDGAME ?? "1") === "1",
   fightLoot: (process.env.K_FIGHTLOOT ?? "1") === "1",
   loot2: (process.env.K_LOOT2 ?? "1") === "1",
+  loot3: (process.env.K_LOOT3 ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -919,7 +920,7 @@ class Brain {
     for (const c of this.cubeMem.values()) {
       if ((this.badTargets.get(c.id) ?? -1) > o.t || !ok(c.pos)) continue
       const d = d2(c.pos, pos)
-      if (d < (K.loot2 ? 55 : 35) && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
+      if (d < (K.loot3 ? 80 : K.loot2 ? 55 : 35) && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
     }
     const myBest = Math.max(0, ...me.weapons.filter((w) => w && w.kind !== "gun").map((w) => WEAPON_VALUE[w!.kind] ?? 0))
     for (const p of this.pickMem.values()) {
@@ -927,7 +928,7 @@ class Brain {
       if (v <= 0 || this.weapon(o, p.kind) || (me.weapons[1] && v <= myBest + 0.4)) continue
       if ((this.badTargets.get(p.id) ?? -1) > o.t || !ok(p.pos)) continue
       const d = d2(p.pos, pos) - 10 // weapons are worth a little detour
-      if (d < (K.loot2 ? 40 : 30) && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
+      if (d < (K.loot3 ? 55 : K.loot2 ? 40 : 30) && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
     }
     // don't walk into a lightning arc
     if (best && tg.weapons.includes("lightning") && Math.hypot(best.x - tg.pos[0], best.y - tg.pos[1]) < 50) return null
@@ -963,7 +964,7 @@ class Brain {
       if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
-      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (farm ? 200 : 70) - dist })
+      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (farm ? 200 : K.loot3 ? 150 : 70) - dist })
     }
     // crates: approach to shooting range if not visible line
     for (const c of o.crates) {
