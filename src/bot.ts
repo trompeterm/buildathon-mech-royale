@@ -53,6 +53,8 @@ const K = {
   gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
   focus: (process.env.K_FOCUS ?? "0") === "1",
   farm: (process.env.K_FARM ?? "1") === "1",
+  farm2: (process.env.K_FARM2 ?? "1") === "1",
+  scan: (process.env.K_SCAN ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -841,7 +843,7 @@ class Brain {
   }
 
   lootGoal(o: Observation, enemiesSeen: boolean): Goal | null {
-    const farm = K.farm && o.t < 120
+    const farm = K.farm && o.t < (K.farm2 ? 200 : 120)
     const me = o.self
     const pos = me.pos
     const z = this.safeCircle(o)
@@ -1139,7 +1141,7 @@ class Brain {
       }
       if (yaw === null) {
         const mv = act.move ?? [0, 0]
-        if (Math.hypot(mv[0], mv[1]) > 0.3) yaw = Math.atan2(mv[1], mv[0])
+        if (Math.hypot(mv[0], mv[1]) > 0.3) yaw = Math.atan2(mv[1], mv[0]) + (K.scan ? Math.sin(o.t * 1.6) * 1.2 : 0)
         else yaw = aimNow[0] + 0.6 // slow scan
       }
       desired = [yaw!, 0]
