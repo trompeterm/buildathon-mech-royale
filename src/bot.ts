@@ -57,6 +57,7 @@ const K = {
   scan: (process.env.K_SCAN ?? "0") === "1",
   farm3: (process.env.K_FARM3 ?? "0") === "1",
   endgame: (process.env.K_ENDGAME ?? "1") === "1",
+  fightLoot: (process.env.K_FIGHTLOOT ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -122,6 +123,7 @@ class Brain {
   lastTargetId = -1
   lastTargetT = -99
   quiet = false
+  fightLooting = false
   climbWaitT = -99
   noClimbUntil = -99
   lastStuckT = -99
@@ -239,6 +241,7 @@ class Brain {
       }
     }
     this.dmgEvents = this.dmgEvents.filter((e) => o.t - e.t < 6)
+    this.updateLootMem(o)
     for (const s of o.sounds) this.heard.push({ t: o.t - s.age, bearing: s.bearing, dist: s.dist, kind: s.kind })
     this.heard = this.heard.filter((s) => o.t - s.t < 4)
     // forget stale tracks
@@ -600,7 +603,7 @@ class Brain {
       this.combatMove(o, target, act)
       lap('cmove', _t0)
       moveSet = true
-      label = "fight " + target.id
+      label = (this.fightLooting ? "floot " : "fight ") + target.id
     }
 
     const canHunt = K.hunt && hpFrac > 0.75 && !needRotate && o.t - this.lastDamagedT > 3
@@ -827,6 +830,16 @@ class Brain {
     const me = o.self
     const pos = me.pos
     const W = this.W
+    if (K.fightLoot) {
+      const g = this.fightLootGoal(o, tg)
+      if (g) {
+        this.goTo(o, g, act)
+        act.boost = me.energy > 35 && !((this.weapon(o, "laser")?.charge ?? 0) > 0)
+        this.fightLooting = true
+        return
+      }
+    }
+    this.fightLooting = false
     const d = d2(tg.pos, pos)
     const has = (k: string) => !!this.weapon(o, k)
     // preferred distance band
@@ -871,6 +884,51 @@ class Brain {
     act.boost = me.energy > (DODGE > 0 && BOOSTLOW ? 15 : 35) && !charging
   }
 
+  cubeMem = new Map<number, { id: number; pos: V3; t: number }>()
+  pickMem = new Map<number, { id: number; kind: string; pos: V3; t: number }>()
+  /** remember loot we saw (it is only listed while visible); forget what should be visible but isn't */
+  updateLootMem(o: Observation) {
+    const me = o.self
+    const eye: V3 = [me.pos[0], me.pos[1], me.pos[2] + (me.stats.eye_height ?? 8)]
+    const near = (this.C.vision.near_range ?? 45) + (me.stats.near_range_bonus ?? 0) - 3
+    for (const c of o.cubes) this.cubeMem.set(c.id, { id: c.id, pos: c.pos, t: o.t })
+    for (const p of o.pickups) this.pickMem.set(p.id, { id: p.id, kind: p.kind, pos: p.pos, t: o.t })
+    const prune = (m: Map<number, any>) => {
+      for (const [id, c] of m) {
+        if (c.t === o.t) continue
+        const dd = d2(c.pos, me.pos)
+        if (o.t - c.t > 45 || (dd < 2.5 && Math.abs(c.pos[2] - me.pos[2]) < 4)) { m.delete(id); continue }
+        if (dd < near && this.W.los(eye, [c.pos[0], c.pos[1], c.pos[2] + 0.5], 0.5)) m.delete(id) // should see it: gone
+      }
+    }
+    prune(this.cubeMem)
+    prune(this.pickMem)
+  }
+
+  /** in a fight: a cube or better weapon close enough to walk to while we keep shooting */
+  fightLootGoal(o: Observation, tg: Track): Goal | null {
+    const me = o.self, pos = me.pos
+    const zc = this.zoneAt(o, o.t + 10)
+    const ok = (p: number[]) => Math.hypot(p[0] - zc.c[0], p[1] - zc.c[1]) < zc.r - 5 && Math.abs(p[2] - me.pos[2]) < 6
+    let best: Goal | null = null, bd = Infinity
+    for (const c of this.cubeMem.values()) {
+      if ((this.badTargets.get(c.id) ?? -1) > o.t || !ok(c.pos)) continue
+      const d = d2(c.pos, pos)
+      if (d < 35 && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
+    }
+    const myBest = Math.max(0, ...me.weapons.filter((w) => w && w.kind !== "gun").map((w) => WEAPON_VALUE[w!.kind] ?? 0))
+    for (const p of this.pickMem.values()) {
+      const v = WEAPON_VALUE[p.kind] ?? 0
+      if (v <= 0 || this.weapon(o, p.kind) || (me.weapons[1] && v <= myBest + 0.4)) continue
+      if ((this.badTargets.get(p.id) ?? -1) > o.t || !ok(p.pos)) continue
+      const d = d2(p.pos, pos) - 10 // weapons are worth a little detour
+      if (d < 30 && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
+    }
+    // don't walk into a lightning arc
+    if (best && tg.weapons.includes("lightning") && Math.hypot(best.x - tg.pos[0], best.y - tg.pos[1]) < 50) return null
+    return best
+  }
+
   lootGoal(o: Observation, enemiesSeen: boolean): Goal | null {
     const farm = K.farm && o.t < (K.farm2 ? 200 : 120)
     const me = o.self
@@ -885,7 +943,7 @@ class Brain {
     const cands: { g: Goal; score: number }[] = []
     const hasSlot1 = !!me.weapons[1]
     const myBest = Math.max(...me.weapons.filter((w) => w && w.kind !== "gun").map((w) => WEAPON_VALUE[w!.kind] ?? 0), 0)
-    for (const p of o.pickups) {
+    for (const p of this.pickMem.values()) {
       if ((this.badTargets.get(p.id) ?? -1) > o.t) continue
       const v = WEAPON_VALUE[p.kind] ?? 0
       if (v <= 0) continue
@@ -896,7 +954,7 @@ class Brain {
       const climb = Math.max(0, p.pos[2] - this.W.surfAt(pos[0], pos[1]))
       cands.push({ g: { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "weapon", id: p.id }, score: v * 60 + (hasSlot1 ? 0 : 60) - dist - climb * 2 })
     }
-    for (const c of o.cubes) {
+    for (const c of this.cubeMem.values()) {
       if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
