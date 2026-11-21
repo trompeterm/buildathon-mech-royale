@@ -66,7 +66,8 @@ const K = {
   stealth: (process.env.K_STEALTH ?? "0") === "1",
   rear: (process.env.K_REAR ?? "0") === "1",
   finish: (process.env.K_FINISH ?? "1") === "1",
-  finish2: (process.env.K_FINISH2 ?? "1") === "1",
+  finish2: (process.env.K_FINISH2 ?? "0") === "1",
+  capCubes: (process.env.K_CAPCUBES ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -982,7 +983,9 @@ class Brain {
         if (d - 100 < bd) { bd = d - 100; best = { x: dr.pos[0], y: dr.pos[1], z: dr.pos[2], why: "fdrop", id: dr.id } }
       }
     }
+    const capped = K.capCubes && me.cubes >= (this.C.cubes.stat_cap ?? 10)
     for (const c of this.cubeMem.values()) {
+      if (capped) break
       if ((this.badTargets.get(c.id) ?? -1) > o.t || !ok(c.pos)) continue
       const d = d2(c.pos, pos)
       if (d < (K.loot3 ? 80 : K.loot2 ? 55 : 35) && d < bd) { bd = d; best = { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "fcube", id: c.id } }
@@ -1029,7 +1032,7 @@ class Brain {
       if ((this.badTargets.get(c.id) ?? -1) > o.t) continue
       if (!okPlace(c.pos)) continue
       const dist = d3(c.pos, pos)
-      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (farm ? 200 : K.loot3 ? 150 : 70) - dist })
+      cands.push({ g: { x: c.pos[0], y: c.pos[1], z: c.pos[2], why: "cube", id: c.id }, score: (K.capCubes && me.cubes >= (this.C.cubes.stat_cap ?? 10) ? 0 : farm ? 200 : K.loot3 ? 150 : 70) - dist })
     }
     // crates: approach to shooting range if not visible line
     for (const c of (K.crateMem ? this.crateMem.values() : o.crates)) {
