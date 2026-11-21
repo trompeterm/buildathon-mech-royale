@@ -47,7 +47,8 @@ const K = {
   calmBoost: (process.env.K_CALMBOOST ?? "0") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
-  aggro2: (process.env.K_AGGRO2 ?? "1") === "1",
+  aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
+  hunt: (process.env.K_HUNT ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -532,6 +533,11 @@ class Brain {
       label = "fight " + target.id
     }
 
+    const canHunt = K.hunt && hpFrac > 0.75 && !needRotate && o.t - this.lastDamagedT > 3
+    if (!moveSet && canHunt && me.weapons[1]) {
+      const hg = this.huntGoal(o)
+      if (hg) { this.goTo(o, hg, act); label = "hunt"; moveSet = true; if (me.energy > 60) act.boost = true }
+    }
     if (!moveSet) {
       // loot / drops / npcs / roam
       _t0 = performance.now()
@@ -545,6 +551,10 @@ class Brain {
         // travel fast while calm: energy is otherwise idle (keep a reserve for climbing / fights)
         if (K.calmBoost && me.energy > 50 && !lg.why.endsWith("-shoot") && lg.why !== "capture") act.boost = true
       }
+    }
+    if (!moveSet && canHunt) {
+      const hg = this.huntGoal(o)
+      if (hg) { this.goTo(o, hg, act); label = "hunt"; moveSet = true; if (me.energy > 60) act.boost = true }
     }
     if (!moveSet) {
       const g = this.idleGoal(o)
@@ -623,6 +633,34 @@ class Brain {
     if (d <= r || d < 1) return { x: c[0], y: c[1], why: "zone" }
     const f = (d - r) / d
     return { x: me.pos[0] + (c[0] - me.pos[0]) * f, y: me.pos[1] + (c[1] - me.pos[1]) * f, why: "zone" }
+  }
+
+  huntMem: { x: number; y: number; t: number } | null = null
+  /** where to go looking for a fight: newest remembered enemy, else the latest combat sound */
+  huntGoal(o: Observation): Goal | null {
+    const me = o.self, pos = me.pos
+    let best: Track | null = null
+    for (const e of this.tracks.values()) if (e.id !== me.id && o.t - e.seen < 20 && (!best || e.seen > best.seen)) best = e
+    let gx: number | null = null, gy = 0
+    if (best) { gx = best.pos[0]; gy = best.pos[1] }
+    else {
+      const kinds = ["gun", "laser", "lightning", "mortar", "explosion", "boost", "step", "reload", "laser_charge"]
+      const loud = this.heard.filter((s) => kinds.includes(s.kind) && o.t - s.t < 4)
+      if (loud.length) {
+        const s = loud[loud.length - 1]
+        const d = s.dist === "near" ? 40 : s.dist === "mid" ? 110 : 200
+        gx = pos[0] + Math.cos(s.bearing) * d; gy = pos[1] + Math.sin(s.bearing) * d
+      }
+    }
+    if (gx !== null) this.huntMem = { x: gx, y: gy, t: o.t }
+    const h = this.huntMem
+    if (!h || o.t - h.t > 15) return null
+    if (Math.hypot(h.x - pos[0], h.y - pos[1]) < 8) { this.huntMem = null; return null }
+    const z = this.safeCircle(o)
+    let x = h.x, y = h.y
+    const dz = Math.hypot(x - z.c[0], y - z.c[1])
+    if (dz > z.r) { x = z.c[0] + ((x - z.c[0]) * z.r) / dz; y = z.c[1] + ((y - z.c[1]) * z.r) / dz }
+    return { x, y, why: "hunt" }
   }
 
   idleGoal(o: Observation): Goal {
