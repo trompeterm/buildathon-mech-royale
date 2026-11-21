@@ -47,6 +47,7 @@ const K = {
   calmBoost: (process.env.K_CALMBOOST ?? "0") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
+  aggro2: (process.env.K_AGGRO2 ?? "1") === "1",
 }
 
 const UPGRADE_PREF = [
@@ -437,8 +438,8 @@ class Brain {
       const ttkThem = tHp / Math.max(1, myDps * 0.8)
       const nThreats = losEnemies.length
       if (hpFrac < 0.3 && ttkThem > ttkMe * 0.6) flee = true
-      else if (ttkThem > ttkMe * 1.3 && hpFrac < 0.75) flee = true
-      else if (nThreats >= 3 && hpFrac < 0.85) flee = true
+      else if (ttkThem > ttkMe * 1.3 && hpFrac < (K.aggro2 ? 0.45 : 0.75)) flee = true
+      else if (nThreats >= 3 && hpFrac < (K.aggro2 ? 0.6 : 0.85)) flee = true
       if (target && target.hp < 250 && ttkThem < ttkMe) flee = false
     }
     // outnumbered: avoid open fights with two or more shooters
@@ -454,7 +455,7 @@ class Brain {
     if (flee && nLos === 1 && target && target.los && d3(target.pos, pos) < 40 && target.hp < me.hp * 1.4) flee = false
     if (flee) this.hideUntil = Math.max(this.hideUntil, o.t + 4)
     // stay hidden while regenerating
-    if (o.t < this.hideUntil + 8 && hpFrac < 0.85 && !(nLos === 1 && target && d3(target.pos, pos) < 40)) {
+    if (o.t < this.hideUntil + 8 && hpFrac < (K.aggro2 ? 0.7 : 0.85) && !(nLos === 1 && target && d3(target.pos, pos) < 40)) {
       if (this.lastHideT > o.t - 0.2) this.hideUntil = Math.max(this.hideUntil, o.t + 0.2)
     }
     this.fdbg = `thr${threatDps.toFixed(0)} in${dpsIn.toFixed(0)} my${myDps.toFixed(0)} th${target ? target.hp.toFixed(0) : '-'} flee${flee ? 1 : 0}`
