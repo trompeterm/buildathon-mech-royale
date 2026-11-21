@@ -74,8 +74,10 @@ const LATE_PREF = ["plating", "nanites", "armor"]
 
 const UPGRADE_PREF = [
   ...((process.env.K_SUSTAIN ?? "1") === "1" ? ["nanites"] : []),
-  "gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating",
-  "gun_velocity", "nanites", "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
+  // hitscan laser never misses a strafer; faster bullets miss less: those first
+  ...((process.env.K_UPG2 ?? "1") === "1"
+    ? ["laser_damage", "laser_charge", "gun_velocity", "gun_rate", "gun_damage", "gun_mag", "lightning_efficiency", "armor", "plating", "nanites"]
+    : ["gun_rate", "gun_damage", "laser_damage", "laser_charge", "gun_mag", "lightning_efficiency", "armor", "plating", "gun_velocity", "nanites"]), "lightning_chain", "lightning_range", "servos", "sensors", "capacitor", "reactor", "jets",
   "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
