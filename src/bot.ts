@@ -49,7 +49,7 @@ const K = {
   calmBoost: (process.env.K_CALMBOOST ?? "1") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
-  aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
+  aggro2: (process.env.K_AGGRO2 ?? "1") === "1",
   hunt: (process.env.K_HUNT ?? "0") === "1",
   duck: (process.env.K_DUCK ?? "0") === "1",
   gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
@@ -84,7 +84,7 @@ const K = {
   hunt2: (process.env.K_HUNT2 ?? "0") === "1",
   lzlt: (process.env.K_LZLT ?? "0") === "1",
   reach: (process.env.K_REACH ?? "0") === "1",
-  heal: (process.env.K_HEAL ?? "1") === "1",
+  heal: (process.env.K_HEAL ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
