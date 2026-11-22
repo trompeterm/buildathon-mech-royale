@@ -75,7 +75,7 @@ const K = {
   press: (process.env.K_PRESS ?? "0") === "1",
   isolate: (process.env.K_ISOLATE ?? "1") === "1",
   iso2: (process.env.K_ISO2 ?? "0") === "1",
-  hull: (process.env.K_HULL ?? "1") === "1",
+  hull: (process.env.K_HULL ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
