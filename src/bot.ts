@@ -81,7 +81,8 @@ const K = {
   commit: (process.env.K_COMMIT ?? "0") === "1",
   killShot: (process.env.K_KILLSHOT ?? "0") === "1",
   jink2: (process.env.K_JINK2 ?? "0") === "1",
-  hunt2: (process.env.K_HUNT2 ?? "1") === "1",
+  hunt2: (process.env.K_HUNT2 ?? "0") === "1",
+  lzlt: (process.env.K_LZLT ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -1171,7 +1172,7 @@ class Brain {
     const myBest = Math.max(0, ...me.weapons.filter((w) => w && w.kind !== "gun").map((w) => WEAPON_VALUE[w!.kind] ?? 0))
     for (const p of this.pickMem.values()) {
       const v = WEAPON_VALUE[p.kind] ?? 0
-      if (v <= 0 || this.weapon(o, p.kind) || (me.weapons[1] && v <= myBest + 0.4)) continue
+      if (v <= 0 || this.weapon(o, p.kind) || (me.weapons[1] && v <= myBest + 0.4 && !this.lzWant(o, p.kind))) continue
       if ((this.badTargets.get(p.id) ?? -1) > o.t || !ok(p.pos)) continue
       const d = d2(p.pos, pos) - 10 // weapons are worth a little detour
       if (d < (K.loot3 ? 55 : K.loot2 ? 40 : 30) && d < bd) { bd = d; best = { x: p.pos[0], y: p.pos[1], z: p.pos[2], why: "fweapon", id: p.id } }
@@ -1200,7 +1201,7 @@ class Brain {
       const v = WEAPON_VALUE[p.kind] ?? 0
       if (v <= 0) continue
       if (this.weapon(o, p.kind)) continue
-      if (hasSlot1 && v <= myBest) continue
+      if (hasSlot1 && v <= myBest && !this.lzWant(o, p.kind)) continue
       if (!okPlace(p.pos)) continue
       const dist = d3(p.pos, pos)
       const climb = Math.max(0, p.pos[2] - this.W.surfAt(pos[0], pos[1]))
@@ -1282,6 +1283,11 @@ class Brain {
     return me.hp < me.max_hp * 0.8
   }
 
+  /** laser + lightning beats laser + gun: lightning shreds and shorts anyone who closes in */
+  lzWant(o: Observation, kind: string): boolean {
+    return K.lzlt && kind === "lightning" && !!this.weapon(o, "laser") && !!this.weapon(o, "gun") && !this.weapon(o, "lightning")
+  }
+
   takeLoot(o: Observation, act: Action) {
     const me = o.self
     const reach = this.C.loot.pickup_radius ?? 4
@@ -1294,6 +1300,7 @@ class Brain {
       if (v <= 0) continue
       if (!myW[1]) { if (!best || v > best.v) best = { id: p.id, v }; continue }
       if (!myW[0]) { if (!best || v > best.v) best = { id: p.id, v }; continue }
+      if (this.lzWant(o, p.kind)) { best = { id: p.id, v: 9, drop: myW[0]!.kind === "gun" ? 0 : 1 }; continue }
       // both full: swap the non-gun if better
       const s1 = myW[1]!.kind === "gun" ? 0 : 1
       const cur = WEAPON_VALUE[myW[s1]!.kind] ?? 0
