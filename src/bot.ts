@@ -80,7 +80,7 @@ const K = {
   snipe: (process.env.K_SNIPE ?? "0") === "1",
   commit: (process.env.K_COMMIT ?? "0") === "1",
   killShot: (process.env.K_KILLSHOT ?? "0") === "1",
-  jink2: (process.env.K_JINK2 ?? "1") === "1",
+  jink2: (process.env.K_JINK2 ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -99,6 +99,8 @@ const UPGRADE_PREF = (process.env.K_UPG3 ?? "0") === "1" ? [
   "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ] : [
   ...((process.env.K_SUSTAIN ?? "1") === "1" ? ["nanites"] : []),
+  // see flankers sooner: 45 -> 60 m all-around sensors, 200 -> 225 m vision
+  ...((process.env.K_SENSORS ?? "1") === "1" ? ["sensors"] : []),
   // hitscan laser never misses a strafer; faster bullets miss less: those first
   ...((process.env.K_UPG2 ?? "1") === "1"
     ? ["laser_damage", "laser_charge", "gun_velocity", "gun_rate", "gun_damage", "gun_mag", "lightning_efficiency", "armor", "plating", "nanites"]
