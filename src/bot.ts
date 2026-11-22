@@ -85,7 +85,7 @@ const K = {
   lzlt: (process.env.K_LZLT ?? "0") === "1",
   reach: (process.env.K_REACH ?? "0") === "1",
   heal: (process.env.K_HEAL ?? "0") === "1",
-  close: (process.env.K_CLOSE ?? "1") === "1",
+  close: (process.env.K_CLOSE ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
