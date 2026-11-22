@@ -83,12 +83,16 @@ const K = {
   jink2: (process.env.K_JINK2 ?? "0") === "1",
   hunt2: (process.env.K_HUNT2 ?? "0") === "1",
   lzlt: (process.env.K_LZLT ?? "0") === "1",
+  reach: (process.env.K_REACH ?? "0") === "1",
+  heal: (process.env.K_HEAL ?? "1") === "1",
 }
 
-const DODGE = parseInt(process.env.K_DODGE ?? "2")
+const DODGE = parseInt(process.env.K_DODGE ?? "0")
 const BOOSTLOW = (process.env.K_BOOSTLOW ?? "0") === "1"
 const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser charging at us, cover <= 12 m
 const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (0 = plain linear lead)
+const HEAL_AT = parseFloat(process.env.K_HEALAT ?? "0.5")
+const HEAL_NAN = parseInt(process.env.K_HEALNAN ?? "1")
 const SNIPE_LAT = parseFloat(process.env.K_SNIPELAT ?? "6")
 const SNIPE_WAIT = parseFloat(process.env.K_SNIPEWAIT ?? "0.6")
 
@@ -529,6 +533,10 @@ class Brain {
       else if (nThreats >= 3 && hpFrac < (K.aggro2 ? 0.6 : 0.85)) flee = true
       if (target && target.hp < 250 && ttkThem < ttkMe) flee = false
     }
+    // nanites: we heal ~115 HP/s after 2 s, house bots 45 HP/s after 5 s; break off at half HP, heal, come back
+    const nan = ((me as any).upgrades ?? []).filter((u: any) => (u?.id ?? u) === "nanites").length
+    const healer = K.heal && nan >= HEAL_NAN
+    if (healer && hpFrac < HEAL_AT && !(target && target.hp < 350)) flee = true
     // outnumbered: avoid open fights with two or more shooters
     const nLos = losEnemies.filter((e) => d3(e.pos, pos) < 230).length
     if (nLos >= 2) {
@@ -549,7 +557,7 @@ class Brain {
     if (K.commit && flee && target && target.los && target.hp < target.maxHp * 0.3 && hpFrac > 0.25 && nLos <= 2 && d3(target.pos, pos) < 200) flee = false
     if (flee) this.hideUntil = Math.max(this.hideUntil, o.t + 4)
     // stay hidden while regenerating
-    if (o.t < this.hideUntil + 8 && hpFrac < (K.aggro2 ? 0.7 : 0.85) && !(nLos === 1 && target && d3(target.pos, pos) < 40)) {
+    if (o.t < this.hideUntil + 8 && hpFrac < (healer ? 0.97 : K.aggro2 ? 0.7 : 0.85) && !(nLos === 1 && target && d3(target.pos, pos) < 40)) {
       if (this.lastHideT > o.t - 0.2) this.hideUntil = Math.max(this.hideUntil, o.t + 0.2)
     }
     this.fdbg = `thr${threatDps.toFixed(0)} in${dpsIn.toFixed(0)} my${myDps.toFixed(0)} th${target ? target.hp.toFixed(0) : '-'} flee${flee ? 1 : 0}`
@@ -1254,7 +1262,8 @@ class Brain {
       const eye: V3 = [pos[0], pos[1], pos[2] + 8]
       const tz = (g.z ?? 0) + 1.2
       const seen = g.why === "npc" || o.crates.some((c) => c.id === g.id)
-      if (d < (g.why === "npc" ? 70 : 90) && this.W.los(eye, [g.x, g.y, tz]) && seen) {
+      const lzr = K.reach && !!this.weapon(o, "laser")
+      if (d < (g.why === "npc" ? (lzr ? 160 : 70) : (lzr ? 220 : 90)) && this.W.los(eye, [g.x, g.y, tz]) && seen) {
         // hold position (strafe a little vs npcs)
         return { x: pos[0], y: pos[1], why: g.why + "-shoot" }
       }
@@ -1389,14 +1398,14 @@ class Brain {
       let bn: Track | null = null, bd = Infinity
       for (const n of npcs) {
         const d = d3(n.pos, pos)
-        if (d < bd && n.los && d < 150) { bd = d; bn = n }
+        if (d < bd && n.los && d < (K.reach && this.weapon(o, "laser") ? 220 : 150)) { bd = d; bn = n }
       }
       if (bn) { tpos = bn.pos; tvel = bn.vel; hOff = 1.75; radius = 1.8; tlos = true }
       else {
         let bc: any = null, bcd = Infinity
         for (const c of o.crates) {
           const d = d3(c.pos, pos)
-          if (d < 110 && d < bcd) {
+          if (d < (K.reach && this.weapon(o, "laser") ? 230 : 110) && d < bcd) {
             const cp: V3 = [c.pos[0], c.pos[1], c.pos[2] + 1.2]
             if (W.los(muz, cp, 0.5)) { bcd = d; bc = c }
           }

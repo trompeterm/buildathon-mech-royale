@@ -355,7 +355,7 @@ class Match {
     // take weapons
     for (const p of this.pickups) if (Math.hypot(p.pos[0] - m.pos[0], p.pos[1] - m.pos[1]) < 3.8 && !m.weapons[1] && p.kind !== "mortar") act.take = p.id
     if (m.offer) act.pick = 0
-    if (process.env.SIM_PEACE) act.fire = [false, false]
+    if (process.env.SIM_PEACE || process.env.SIM_HARMLESS) act.fire = [false, false]
     if (m.weapons[0]?.ammo === 0) act.reload = true
     return act
   }
@@ -698,6 +698,7 @@ class Match {
         this.stepDrops()
         this.t += DT
         this.tick++
+        { const b0: any = this.mechs[0]; for (const T of [60, 120, 200]) if (b0.alive && b0["c" + T] === undefined && this.t >= T) b0["c" + T] = b0.cubes }
         if (this.t >= this.ze && this.phase < CFG.zone.phases.length) this.nextPhase()
         // placements
         const nowAlive = this.mechs.filter((m) => m.alive).length
@@ -751,7 +752,7 @@ for (let i = 0; i < N; i++) {
     const pts = 16 - me.place
     tot += pts; all.push(pts)
     const hs = res.filter((x) => !x.isBot).reduce((a, x) => a + (x.shots ?? 0), 0), hh = res.filter((x) => !x.isBot).reduce((a, x) => a + (x.hits ?? 0), 0)
-    console.log(`match ${seed0 + i} bot${b}: hshots ${hs} hhits ${hh} place ${me.place} pts ${pts} kills ${me.kills} died ${me.alive ? "-" : me.deathT.toFixed(0) + "s by " + me.cause} cubes ${me.cubes} w=${me.weapons.map((w) => w?.kind)} hp=${me.hp.toFixed(0)} shots ${me.shots ?? 0} hits ${me.hits ?? 0} dealt ${(me.dealt ?? 0).toFixed(0)} | killer: ${(() => { const k = res.find((x) => me.cause.includes(':' + x.id + '/')); return k ? `shots ${k.shots} hits ${k.hits} hp ${k.hp.toFixed(0)}` : '' })()}`)
+    console.log(`match ${seed0 + i} bot${b}: c60 ${(me as any).c60 ?? "-"} c120 ${(me as any).c120 ?? "-"} c200 ${(me as any).c200 ?? "-"} hshots ${hs} hhits ${hh} place ${me.place} pts ${pts} kills ${me.kills} died ${me.alive ? "-" : me.deathT.toFixed(0) + "s by " + me.cause} cubes ${me.cubes} w=${me.weapons.map((w) => w?.kind)} hp=${me.hp.toFixed(0)} shots ${me.shots ?? 0} hits ${me.hits ?? 0} dealt ${(me.dealt ?? 0).toFixed(0)} | killer: ${(() => { const k = res.find((x) => me.cause.includes(':' + x.id + '/')); return k ? `shots ${k.shots} hits ${k.hits} hp ${k.hp.toFixed(0)}` : '' })()}`)
   }
   times.push(...m.timing)
   if (args.includes('--hist')) console.log('   ', Object.entries(m.hist).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}:${(v / 10).toFixed(0)}s`).join(' '))
