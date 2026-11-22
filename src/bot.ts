@@ -49,7 +49,7 @@ const K = {
   calmBoost: (process.env.K_CALMBOOST ?? "1") === "1",
   gunAvoid: (process.env.K_GUNAVOID ?? "0") === "1",
   aggro: (process.env.K_AGGRO ?? "1") === "1",
-  aggro2: (process.env.K_AGGRO2 ?? "1") === "1",
+  aggro2: (process.env.K_AGGRO2 ?? "0") === "1",
   hunt: (process.env.K_HUNT ?? "0") === "1",
   duck: (process.env.K_DUCK ?? "0") === "1",
   gunCharge: (process.env.K_GUNCHARGE ?? "0") === "1",
@@ -85,6 +85,7 @@ const K = {
   lzlt: (process.env.K_LZLT ?? "0") === "1",
   reach: (process.env.K_REACH ?? "0") === "1",
   heal: (process.env.K_HEAL ?? "0") === "1",
+  close: (process.env.K_CLOSE ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -93,6 +94,8 @@ const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser cha
 const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (0 = plain linear lead)
 const HEAL_AT = parseFloat(process.env.K_HEALAT ?? "0.5")
 const HEAL_NAN = parseInt(process.env.K_HEALNAN ?? "1")
+const CLOSE_LO = parseFloat(process.env.K_CLOSELO ?? "40")
+const CLOSE_HI = parseFloat(process.env.K_CLOSEHI ?? "85")
 const SNIPE_LAT = parseFloat(process.env.K_SNIPELAT ?? "6")
 const SNIPE_WAIT = parseFloat(process.env.K_SNIPEWAIT ?? "0.6")
 
@@ -949,6 +952,8 @@ class Brain {
     if (has("laser")) {
       if (K.laserBand && !tg.weapons.some((w) => w !== "gun")) { lo = 150; hi = 195 } else { lo = 60; hi = 160 }
     }
+    // their laser hits at any range; our gun hits far more often up close (0.2 s flight at 50 m vs 0.5 s at 120 m)
+    if (K.close && has("laser") && has("gun") && !tg.weapons.includes("lightning") && !tg.weapons.includes("mortar")) { lo = CLOSE_LO; hi = CLOSE_HI }
     if (has("lightning")) { lo = 15; hi = 38 }
     if (tg.weapons.includes("lightning") && !has("lightning")) lo = Math.max(lo, 60)
     if (tg.weapons.includes("mortar") && !has("lightning")) lo = Math.max(lo, 40)
