@@ -81,7 +81,7 @@ const K = {
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
 const BOOSTLOW = (process.env.K_BOOSTLOW ?? "0") === "1"
 const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser charging at us, cover <= 12 m
-const TAU = parseFloat(process.env.K_TAU ?? "0.9") // lead damping time constant (0 = plain linear lead)
+const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (0 = plain linear lead)
 
 const LATE_PREF = ["plating", "nanites", "armor"]
 
