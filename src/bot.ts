@@ -78,6 +78,7 @@ const K = {
   hull: (process.env.K_HULL ?? "0") === "1",
   tri: (process.env.K_TRI ?? "0") === "1",
   snipe: (process.env.K_SNIPE ?? "0") === "1",
+  commit: (process.env.K_COMMIT ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -534,6 +535,8 @@ class Brain {
     if (K.gunAvoid && !me.weapons[1] && target && d3(target.pos, pos) > 100 && o.t - this.lastDamagedT > 1.5 && target.hp > 500) flee = true
     // cornered at close range by a single enemy we can beat: fight
     if (flee && nLos === 1 && target && target.los && d3(target.pos, pos) < 40 && target.hp < me.hp * 1.4) flee = false
+    // a kill is a point: don't break off from a nearly dead target in sight unless we are nearly dead too
+    if (K.commit && flee && target && target.los && target.hp < target.maxHp * 0.3 && hpFrac > 0.25 && nLos <= 2 && d3(target.pos, pos) < 200) flee = false
     if (flee) this.hideUntil = Math.max(this.hideUntil, o.t + 4)
     // stay hidden while regenerating
     if (o.t < this.hideUntil + 8 && hpFrac < (K.aggro2 ? 0.7 : 0.85) && !(nLos === 1 && target && d3(target.pos, pos) < 40)) {
