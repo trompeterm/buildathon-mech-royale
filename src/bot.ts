@@ -72,12 +72,12 @@ const K = {
   capCubes: (process.env.K_CAPCUBES ?? "0") === "1",
   brawl: (process.env.K_BRAWL ?? "0") === "1",
   jink: (process.env.K_JINK ?? "1") === "1",
-  press: (process.env.K_PRESS ?? "0") === "1",
+  press: (process.env.K_PRESS ?? "1") === "1",
   isolate: (process.env.K_ISOLATE ?? "0") === "1",
   iso2: (process.env.K_ISO2 ?? "0") === "1",
   hull: (process.env.K_HULL ?? "0") === "1",
   tri: (process.env.K_TRI ?? "0") === "1",
-  snipe: (process.env.K_SNIPE ?? "1") === "1",
+  snipe: (process.env.K_SNIPE ?? "0") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
