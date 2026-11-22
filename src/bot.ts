@@ -81,6 +81,7 @@ const K = {
   commit: (process.env.K_COMMIT ?? "0") === "1",
   killShot: (process.env.K_KILLSHOT ?? "0") === "1",
   jink2: (process.env.K_JINK2 ?? "0") === "1",
+  hunt2: (process.env.K_HUNT2 ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -100,7 +101,7 @@ const UPGRADE_PREF = (process.env.K_UPG3 ?? "0") === "1" ? [
 ] : [
   ...((process.env.K_SUSTAIN ?? "1") === "1" ? ["nanites"] : []),
   // see flankers sooner: 45 -> 60 m all-around sensors, 200 -> 225 m vision
-  ...((process.env.K_SENSORS ?? "1") === "1" ? ["sensors"] : []),
+  ...((process.env.K_SENSORS ?? "0") === "1" ? ["sensors"] : []),
   // hitscan laser never misses a strafer; faster bullets miss less: those first
   ...((process.env.K_UPG2 ?? "1") === "1"
     ? ["laser_damage", "laser_charge", "gun_velocity", "gun_rate", "gun_damage", "gun_mag", "lightning_efficiency", "armor", "plating", "nanites"]
@@ -683,7 +684,9 @@ class Brain {
         if (K.calmBoost && me.energy > 50 && !lg.why.endsWith("-shoot") && lg.why !== "capture") act.boost = true
       }
     }
-    if (!moveSet && canHunt) {
+    // hunt2: nothing left to loot after the farm window and healthy: go find the next hunter instead of roaming
+    const canHunt2 = K.hunt2 && o.t > 200 && hpFrac > 0.9 && me.cubes >= 6 && !!this.weapon(o, "laser") && !needRotate && o.t - this.lastDamagedT > 3
+    if (!moveSet && (canHunt || canHunt2)) {
       const hg = this.huntGoal(o)
       if (hg) { this.goTo(o, hg, act); label = "hunt"; moveSet = true; if (me.energy > 60) act.boost = true }
     }
