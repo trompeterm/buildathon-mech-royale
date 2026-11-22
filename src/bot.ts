@@ -76,12 +76,16 @@ const K = {
   isolate: (process.env.K_ISOLATE ?? "0") === "1",
   iso2: (process.env.K_ISO2 ?? "0") === "1",
   hull: (process.env.K_HULL ?? "0") === "1",
+  tri: (process.env.K_TRI ?? "0") === "1",
+  snipe: (process.env.K_SNIPE ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
 const BOOSTLOW = (process.env.K_BOOSTLOW ?? "0") === "1"
 const DUCKL = (process.env.K_DUCKL ?? "0") === "1" // duck only from a laser charging at us, cover <= 12 m
 const TAU = parseFloat(process.env.K_TAU ?? "0") // lead damping time constant (0 = plain linear lead)
+const SNIPE_LAT = parseFloat(process.env.K_SNIPELAT ?? "6")
+const SNIPE_WAIT = parseFloat(process.env.K_SNIPEWAIT ?? "0.6")
 
 const LATE_PREF = ["plating", "nanites", "armor"]
 
@@ -99,7 +103,7 @@ const UPGRADE_PREF = (process.env.K_UPG3 ?? "0") === "1" ? [
   "gyros", "laser_pierce", "mortar_reload", "mortar_splash", "mortar_velocity",
 ]
 
-const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: (process.env.K_LIGHTNING ?? "0") === "1" ? 3.5 : 2, mortar: 0.5, gun: 0 }
+const WEAPON_VALUE: Record<string, number> = { laser: 3, lightning: (process.env.K_LIGHTNING ?? "0") === "1" ? 3.5 : 2, mortar: (process.env.K_TRI ?? "0") === "1" ? 0 : 0.5, gun: 0 }
 
 type Goal = { x: number; y: number; z?: number; why: string; id?: number }
 
@@ -724,6 +728,7 @@ class Brain {
       if (o.t - e.lastDmgToMe < 3) s += 120
       if (e.los) s += 80
       if (e.weapons.includes("lightning") && d < 60) s += 60
+      if (K.tri && e.weapons.includes("mortar") && this.weapon(o, "laser")) s += 70 // cook-off: our laser deals +60%
       if (K.rear && losEnemies.length > 1) {
         // facing this one puts the others behind us (rear hits deal 1.5x): prefer the target that keeps them in front
         const a0 = Math.atan2(e.pos[1] - me.pos[1], e.pos[0] - me.pos[0])
@@ -1405,7 +1410,15 @@ class Brain {
         if (ch > 0) {
           // charging: release when full and on target
           const holdLeft = full + (this.C.weapons.laser.hold_s ?? 2) - ch
-          if (ok && ch >= full - 0.02 && err < tolFor(radius, dist)) fire[lz] = false // release
+          // snipe: a full charge holds for 2 s; wait (up to SNIPE_WAIT) for the target's sideways speed to drop
+          // (strafe reversal, or slowing to charge its own laser) so the beam lands where it is
+          let calm = true
+          if (K.snipe && tvel && isMech) {
+            const ddx = tpos[0] - pos[0], ddy = tpos[1] - pos[1], LL = Math.hypot(ddx, ddy) || 1
+            const lat = Math.abs((tvel[0] * -ddy + tvel[1] * ddx) / LL)
+            calm = lat < SNIPE_LAT || ch >= full + SNIPE_WAIT || (target?.hp ?? 999) < 200
+          }
+          if (ok && ch >= full - 0.02 && err < tolFor(radius, dist) && calm) fire[lz] = false // release
           else if (!ok && holdLeft < 0.25) fire[lz] = false // release before auto-fire anyway
           else if (ok && target && target.hp < 120 && ch > 0.2 && err < tolFor(radius, dist)) fire[lz] = false
           else fire[lz] = true
