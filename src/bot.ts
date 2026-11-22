@@ -78,7 +78,8 @@ const K = {
   hull: (process.env.K_HULL ?? "0") === "1",
   tri: (process.env.K_TRI ?? "0") === "1",
   snipe: (process.env.K_SNIPE ?? "0") === "1",
-  commit: (process.env.K_COMMIT ?? "1") === "1",
+  commit: (process.env.K_COMMIT ?? "0") === "1",
+  killShot: (process.env.K_KILLSHOT ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -1424,6 +1425,8 @@ class Brain {
           if (ok && ch >= full - 0.02 && err < tolFor(radius, dist) && calm) fire[lz] = false // release
           else if (!ok && holdLeft < 0.25) fire[lz] = false // release before auto-fire anyway
           else if (ok && target && target.hp < 120 && ch > 0.2 && err < tolFor(radius, dist)) fire[lz] = false
+          else if (K.killShot && ok && target && isMech && ch >= 0.15 && err < tolFor(radius, dist) &&
+            (w.stats.damage ?? 315) * ((this.C.weapons.laser.min_frac ?? 0.35) + (1 - (this.C.weapons.laser.min_frac ?? 0.35)) * Math.min(1, ch / full)) * (1 + 0.04 * Math.min(me.cubes, 10)) * 0.85 >= target.hp) fire[lz] = false // enough to kill now
           else fire[lz] = true
           if (!ok && ch < full && !target) fire[lz] = false
         } else if (ok && (w.cooldown ?? 0) <= 0.1 && (isMech || o.self.cubes < 10)) {
