@@ -79,7 +79,8 @@ const K = {
   tri: (process.env.K_TRI ?? "0") === "1",
   snipe: (process.env.K_SNIPE ?? "0") === "1",
   commit: (process.env.K_COMMIT ?? "0") === "1",
-  killShot: (process.env.K_KILLSHOT ?? "1") === "1",
+  killShot: (process.env.K_KILLSHOT ?? "0") === "1",
+  jink2: (process.env.K_JINK2 ?? "1") === "1",
 }
 
 const DODGE = parseInt(process.env.K_DODGE ?? "0")
@@ -158,6 +159,7 @@ class Brain {
   fightLooting = false
   chasing = false
   jinkUntil = -9
+  heardCharges: { t0: number; bearing: number; done: boolean }[] = []
   isolating = false
   isoFightT = -9
   isoCache: { g: Goal | null; t: number; tid: number; hullHere: boolean } | null = null
@@ -286,6 +288,9 @@ class Brain {
     this.dmgEvents = this.dmgEvents.filter((e) => o.t - e.t < 6)
     this.updateLootMem(o)
     for (const s of o.sounds) this.heard.push({ t: o.t - s.age, bearing: s.bearing, dist: s.dist, kind: s.kind })
+    // laser charges we hear but may not see (behind us, beyond the 45 m sensors): jink those too
+    for (const s of o.sounds) if (s.kind === "laser_charge" && s.dist !== "far") this.heardCharges.push({ t0: o.t - s.age, bearing: s.bearing, done: false })
+    this.heardCharges = this.heardCharges.filter((c) => o.t - c.t0 < 1.2)
     this.heard = this.heard.filter((s) => o.t - s.t < 4)
     // forget stale tracks
     for (const [id, tr] of this.tracks) if (o.t - tr.seen > 25) this.tracks.delete(id)
@@ -1006,6 +1011,25 @@ class Brain {
         mx /= L2; my /= L2
         this.jinkUntil = o.t + 0.5
         break
+      }
+      if (K.jink2 && o.t > this.jinkUntil) {
+        for (const c of this.heardCharges) {
+          const el = o.t - c.t0
+          if (c.done || el < 0.45 || el > 0.9) continue
+          c.done = true
+          // a charge we can see is handled above
+          let seen = false
+          for (const e of this.tracks.values()) if (e.charging && o.t - e.seen < 0.01 && Math.abs(wrap(Math.atan2(e.pos[1] - pos[1], e.pos[0] - pos[0]) - c.bearing)) < 0.35) seen = true
+          if (seen) continue
+          this.strafe = -this.strafe
+          this.strafeUntil = o.t + 0.5
+          mx = -uy * this.strafe + ux * radial * 0.3
+          my = ux * this.strafe + uy * radial * 0.3
+          const L2 = Math.hypot(mx, my) || 1
+          mx /= L2; my /= L2
+          this.jinkUntil = o.t + 0.5
+          break
+        }
       }
     }
     act.move = [mx, my]
